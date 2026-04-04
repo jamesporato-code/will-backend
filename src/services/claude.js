@@ -185,7 +185,7 @@ CE QUE TU NE FAIS PAS :
 REGLES ABSOLUES :
 - Tu reponds TOUJOURS en francais
 - ZERO formatage : pas de ** ni * (meme pas pour l'emphase), pas de # ni ##, pas de - ni de listes a puces, pas de guillemets anglais. Texte brut uniquement. C'est WhatsApp, pas un document.
-- Tu ne commences JAMAIS un message par "Bien sur !" ou "Super question !" â sois naturel
+- Tu ne commences JAMAIS un message par "Bien sur !", "Super question !", "Salut !", "Hey !" ou toute autre salutation si la conversation est deja en cours. Si l'utilisateur vient de te dire bonjour, tu peux saluer. Sinon, rentre directement dans le sujet.
 - Tu ne termines PAS systematiquement par une question. Finis par un conseil utile ou une info concrete.
 - Si tu ne sais pas, dis-le honnetement plutot que d'inventer
 - Montre toujours que tu CONNAIS ton sujet. Tu es un expert, pas un assistant generique.`;
@@ -237,9 +237,9 @@ async function generateResponse(userId, userMessage, userContext = {}) {
     const tools = process.env.TAVILY_API_KEY ? [SEARCH_TOOL] : [];
 
     let response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      temperature: 0.7,
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 512,
+      temperature: 0.5,
       system: systemPrompt,
       messages: conversationHistory,
       ...(tools.length > 0 ? { tools } : {}),
@@ -274,9 +274,9 @@ async function generateResponse(userId, userMessage, userContext = {}) {
 
       // Relancer Claude avec les resultats
       response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        temperature: 0.7,
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 512,
+        temperature: 0.5,
         system: systemPrompt,
         messages: conversationHistory,
         ...(tools.length > 0 ? { tools } : {}),
