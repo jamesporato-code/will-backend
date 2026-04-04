@@ -7,7 +7,6 @@ const userService = require('../services/userService');
 const onboarding = require('../services/onboarding');
 const { getCachedResponse, cacheResponse } = require('../services/redis');
 const Stripe = require('stripe');
-
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // Verification Meta
@@ -23,10 +22,10 @@ router.get('/', (req, res) => {
   logger.warn('Echec verification webhook', { mode, token });
   return res.sendStatus(403);
 });
+
 // Messages entrants
 router.post('/', async (req, res) => {
   res.sendStatus(200);
-
   try {
     const parsed = whatsapp.parseWebhookMessage(req.body);
     if (!parsed) return;
@@ -111,38 +110,37 @@ async function handleContentButton(user, parsed) {
 
 async function handleLimitReached(user, reason) {
   if (reason === 'trial_expired') {
-    const checkoutUrl = await createCheckoutUrl(user, 'etudiant');
     const message = 'Ta periode d\'essai de 7 jours est terminee !\n\n' +
       'Pour continuer a apprendre avec moi, choisis un plan :\n\n' +
-      'Etudiant - 4,99â¬/mois (40 msg/jour)\n' +
-      'Pro - 7,99â¬/mois (40 msg/jour + priorite)\n' +
-      'Max - 11,99â¬/mois (messages illimites)\n\n' +
+      'Etudiant - 4,99\u20ac/mois (40 msg/jour)\n' +
+      'Pro - 7,99\u20ac/mois (illimite + priorite)\n\n' +
       'Clique ci-dessous pour t\'abonner :';
 
     await whatsapp.sendButtons(user.whatsapp_id, message, [
-      { id: 'plan_etudiant', title: 'Etudiant 4,99â¬' },
-      { id: 'plan_pro', title: 'Pro 7,99â¬' },
-      { id: 'plan_max', title: 'Max 11,99â¬' },
+      { id: 'plan_etudiant', title: 'Etudiant 4,99\u20ac' },
+      { id: 'plan_pro', title: 'Pro 7,99\u20ac' },
     ], null, 'Sans engagement');
 
   } else if (reason === 'daily_limit') {
     await whatsapp.sendButtons(user.whatsapp_id,
-      'Tu as atteint ta limite de messages pour aujourd\'hui (' + (user.plan === 'trial' ? '5' : '40') + ' messages).\n\n' +
-      'Passe au plan superieur pour plus de messages !', [
-      { id: 'plan_max', title: 'Max - Illimite' },
-      { id: 'account_info', title: 'Mon compte' },
-    ]);
+      'Tu as atteint ta limite de messages pour aujourd\'hui (5 messages).\n\n' +
+      'Passe au plan Pro pour des messages illimites !',
+      [
+        { id: 'plan_etudiant', title: 'Etudiant 4,99\u20ac' },
+        { id: 'plan_pro', title: 'Pro - Illimite' },
+      ]);
   }
 }
 
 async function handleAccountAction(user, parsed) {
   if (parsed.buttonId === 'account_info') {
-    const planNames = { trial: 'Essai gratuit', etudiant: 'Etudiant', pro: 'Pro', max: 'Max', cancelled: 'Annule' };
+    const planNames = { trial: 'Essai gratuit', etudiant: 'Etudiant', pro: 'Pro', cancelled: 'Annule' };
     const info = 'Ton compte Will\n\n' +
       '- Plan : ' + (planNames[user.plan] || user.plan) + '\n' +
       '- Niveau : ' + user.level + '\n' +
       '- Metier : ' + (user.job || 'Non renseigne') + '\n' +
       '- Messages aujourd\'hui : ' + user.daily_messages_count;
+
     await whatsapp.sendButtons(user.whatsapp_id, info, [
       { id: 'account_change_level', title: 'Changer niveau' },
       { id: 'account_manage', title: 'Gerer mon plan' },
@@ -159,7 +157,6 @@ async function handleAccountAction(user, parsed) {
 
   if (parsed.buttonId === 'account_manage') {
     if (user.stripe_customer_id && user.plan !== 'trial' && user.plan !== 'cancelled') {
-      // User has active subscription - send portal link
       try {
         const portalSession = await stripe.billingPortal.sessions.create({
           customer: user.stripe_customer_id,
@@ -173,30 +170,26 @@ async function handleAccountAction(user, parsed) {
         await whatsapp.sendText(user.whatsapp_id, 'Ecris-nous a support@will-ai.fr pour gerer ton abonnement.');
       }
     } else {
-      // No subscription - show plans
-      await whatsapp.sendButtons(user.whatsapp_id,
-        'Choisis ton plan pour debloquer tout Will :', [
-        { id: 'plan_etudiant', title: 'Etudiant 4,99â¬' },
-        { id: 'plan_pro', title: 'Pro 7,99â¬' },
-        { id: 'plan_max', title: 'Max 11,99â¬' },
+      await whatsapp.sendButtons(user.whatsapp_id, 'Choisis ton plan pour debloquer tout Will :', [
+        { id: 'plan_etudiant', title: 'Etudiant 4,99\u20ac' },
+        { id: 'plan_pro', title: 'Pro 7,99\u20ac' },
       ]);
     }
   }
 
-  // Handle plan selection - create Stripe Checkout and send link
-  if (parsed.buttonId === 'plan_etudiant' || parsed.buttonId === 'plan_pro' || parsed.buttonId === 'plan_max') {
+  // Handle plan selection
+  if (parsed.buttonId === 'plan_etudiant' || parsed.buttonId === 'plan_pro') {
     const plan = parsed.buttonId.replace('plan_', '');
     const checkoutUrl = await createCheckoutUrl(user, plan);
 
     if (checkoutUrl) {
-      const planNames = { etudiant: 'Etudiant (4,99â¬/mois)', pro: 'Pro (7,99â¬/mois)', max: 'Max (11,99â¬/mois)' };
+      const planNames = { etudiant: 'Etudiant (4,99\u20ac/mois)', pro: 'Pro (7,99\u20ac/mois)' };
       await whatsapp.sendText(user.whatsapp_id,
         'Super ! Voici ton lien de paiement pour le plan ' + planNames[plan] + ' :\n\n' +
         checkoutUrl + '\n\n' +
         'Paiement securise par Stripe. Sans engagement, annulable a tout moment.');
     } else {
-      await whatsapp.sendText(user.whatsapp_id,
-        'Oups, une erreur s\'est produite. Reessaie dans quelques instants !');
+      await whatsapp.sendText(user.whatsapp_id, 'Oups, une erreur s\'est produite. Reessaie dans quelques instants !');
     }
   }
 }
@@ -206,7 +199,6 @@ async function createCheckoutUrl(user, plan) {
     const priceIds = {
       etudiant: process.env.STRIPE_PRICE_ETUDIANT,
       pro: process.env.STRIPE_PRICE_PRO,
-      max: process.env.STRIPE_PRICE_MAX,
     };
 
     const priceId = priceIds[plan];
