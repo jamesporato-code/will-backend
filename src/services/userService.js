@@ -12,8 +12,10 @@ async function findOrCreateUser(whatsappId, displayName) {
     }
     return user;
   }
+
   const trialEnds = new Date();
   trialEnds.setDate(trialEnds.getDate() + 7);
+
   const result = await query(
     "INSERT INTO users (whatsapp_id, display_name, plan, trial_ends_at) VALUES ($1, $2, 'trial', $3) RETURNING *",
     [whatsappId, displayName, trialEnds]
@@ -27,16 +29,26 @@ async function incrementDailyCount(userId) {
 }
 
 async function updateProfile(userId, updates) {
-  const fields = []; const values = []; let idx = 1;
+  const fields = [];
+  const values = [];
+  let idx = 1;
+
   for (const [key, value] of Object.entries(updates)) {
-    if (['level', 'job', 'plan', 'onboarding_complete', 'display_name'].includes(key)) {
-      fields.push(`${key} = $${idx}`); values.push(value); idx++;
+    if (['level', 'job', 'plan', 'onboarding_complete', 'display_name', 'stripe_customer_id', 'stripe_subscription_id'].includes(key)) {
+      fields.push(`${key} = $${idx}`);
+      values.push(value);
+      idx++;
     }
   }
   if (fields.length === 0) return;
   fields.push('updated_at = NOW()');
   values.push(userId);
   await query(`UPDATE users SET ${fields.join(', ')} WHERE id = $${idx}`, values);
+}
+
+async function findByStripeCustomerId(stripeCustomerId) {
+  const result = await query('SELECT * FROM users WHERE stripe_customer_id = $1', [stripeCustomerId]);
+  return result.rows[0] || null;
 }
 
 async function saveMessage(userId, role, content, messageType, whatsappMessageId) {
@@ -47,8 +59,9 @@ async function saveMessage(userId, role, content, messageType, whatsappMessageId
 }
 
 function canSendMessage(user) {
-  const limits = { trial: 30, starter: 30, pro: 999999, team: 999999, cancelled: 0 };
+  const limits = { trial: 5, etudiant: 40, pro: 40, max: 999999, cancelled: 0 };
   const limit = limits[user.plan] || 0;
+
   if (user.plan === 'trial' && user.trial_ends_at && new Date(user.trial_ends_at) < new Date()) {
     return { allowed: false, reason: 'trial_expired' };
   }
@@ -56,4 +69,4 @@ function canSendMessage(user) {
   return { allowed: true };
 }
 
-module.exports = { findOrCreateUser, incrementDailyCount, updateProfile, saveMessage, canSendMessage };
+module.exports = { findOrCreateUser, incrementDailyCount, updateProfile, findByStripeCustomerId, saveMessage, canSendMessage };
