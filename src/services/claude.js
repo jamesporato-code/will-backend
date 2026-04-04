@@ -237,7 +237,7 @@ async function generateResponse(userId, userMessage, userContext = {}) {
     const tools = process.env.TAVILY_API_KEY ? [SEARCH_TOOL] : [];
 
     let response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
       temperature: 0.7,
       system: systemPrompt,
@@ -274,7 +274,7 @@ async function generateResponse(userId, userMessage, userContext = {}) {
 
       // Relancer Claude avec les resultats
       response = await anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 1024,
         temperature: 0.7,
         system: systemPrompt,
@@ -285,7 +285,10 @@ async function generateResponse(userId, userMessage, userContext = {}) {
 
     // Extraire le texte de la reponse finale
     const textBlock = response.content.find(b => b.type === 'text');
-    const assistantMessage = textBlock ? textBlock.text : "Oups, j'ai eu un petit bug. Reessaie dans quelques secondes !";
+    let assistantMessage = textBlock ? textBlock.text : "Oups, j'ai eu un petit bug. Reessaie dans quelques secondes !";
+
+    // Post-processing : supprimer tout formatage markdown residuel
+    assistantMessage = stripMarkdown(assistantMessage);
 
     logger.debug('Reponse Claude generee', {
       userId,
@@ -308,6 +311,35 @@ function buildContextLine(ctx) {
   if (ctx.job) parts.push(`Metier : ${ctx.job} (donne des exemples lies a ce domaine quand c'est possible)`);
   if (ctx.plan) parts.push(`Plan : ${ctx.plan}`);
   return parts.join('\n');
+}
+
+/**
+ * Supprime tout formatage markdown de la reponse
+ * Filet de securite au cas ou le modele ne respecte pas les consignes
+ */
+function stripMarkdown(text) {
+  return text
+    // Supprimer les headers markdown (## titre, ### titre, etc.)
+    .replace(/^#{1,6}\s+/gm, '')
+    // Supprimer le gras **texte** et __texte__
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    // Supprimer l'italique *texte* et _texte_ (mais pas les underscores dans les mots)
+    .replace(/(?<!\w)\*(.+?)\*(?!\w)/g, '$1')
+    .replace(/(?<!\w)_(.+?)_(?!\w)/g, '$1')
+    // Supprimer les tirets de listes en debut de ligne (- item ou * item)
+    .replace(/^[\-\*]\s+/gm, '')
+    // Supprimer les listes numerotees markdown (1. item)
+    .replace(/^\d+\.\s+/gm, '')
+    // Supprimer les backticks `code` et ```code```
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`(.+?)`/g, '$1')
+    // Supprimer les guillemets anglais curly
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    // Nettoyer les lignes vides multiples (max 2 sauts de ligne)
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 module.exports = { generateResponse };
