@@ -198,10 +198,26 @@ async function generateResponse(userId, userMessage, userContext = {}) {
       [userId]
     );
 
-    const conversationHistory = historyResult.rows.reverse().map(row => ({
-      role: row.role,
-      content: row.content,
-    }));
+    const conversationHistory = historyResult.rows.reverse()
+      .filter(row => {
+        // Filtrer les messages qui contiennent du tool_use ou tool_result
+        // (restes d'anciennes conversations qui cassent l'API)
+        if (typeof row.content === 'string') return true;
+        if (Array.isArray(row.content)) {
+          const hasToolUse = row.content.some(b => b.type === 'tool_use');
+          const hasToolResult = row.content.some(b => b.type === 'tool_result');
+          if (hasToolUse || hasToolResult) return false;
+        }
+        try {
+          const parsed = JSON.parse(row.content);
+          if (Array.isArray(parsed) && parsed.some(b => b.type === 'tool_use' || b.type === 'tool_result')) return false;
+        } catch (e) {}
+        return true;
+      })
+      .map(row => ({
+        role: row.role,
+        content: row.content,
+      }));
 
     // Ajouter le message actuel
     conversationHistory.push({ role: 'user', content: userMessage });
