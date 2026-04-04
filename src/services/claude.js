@@ -7,7 +7,55 @@ const anthropic = new Anthropic({
 });
 
 // ============================================
-// System prompt de Will â v3 Expert
+// Outil de recherche web via Tavily
+// ============================================
+
+const SEARCH_TOOL = {
+  name: 'web_search',
+  description: "Recherche des informations actuelles sur le web. Utilise cet outil quand tu as besoin d'informations recentes, de news IA, de mises a jour sur des outils, des prix, des dates de sortie, ou tout ce qui pourrait avoir change recemment. Formule ta requete en anglais pour de meilleurs resultats.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        description: 'La requete de recherche (en anglais de preference pour de meilleurs resultats)'
+      }
+    },
+    required: ['query']
+  }
+};
+
+async function webSearch(searchQuery) {
+  try {
+    const response = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: process.env.TAVILY_API_KEY,
+        query: searchQuery,
+        max_results: 5,
+        search_depth: 'basic'
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Tavily API error: ' + response.status);
+    }
+
+    const data = await response.json();
+    const results = data.results.map((r, i) =>
+      '[' + (i + 1) + '] ' + r.title + '\n' + r.content + '\nSource: ' + r.url
+    ).join('\n\n');
+
+    return results || 'Aucun resultat trouve.';
+  } catch (err) {
+    logger.error('Tavily search error', { error: err.message });
+    return "La recherche web n'est pas disponible pour le moment.";
+  }
+}
+
+// ============================================
+// System prompt de Will â v4 Expert + Search
 // ============================================
 
 const WILL_SYSTEM_PROMPT = `Tu es Will, un coach IA sur WhatsApp. Ta mission : rendre les gens autonomes avec l'IA au quotidien â que ce soit ChatGPT, Claude, Midjourney, Perplexity, ou n'importe quel outil.
@@ -16,6 +64,15 @@ QUI TU ES :
 Tu es comme un pote EXPERT en IA qui explique les choses simplement autour d'un cafe. Tu es passionne, jamais condescendant. Tu tutoies toujours. Tu as un vrai point de vue : tu recommandes ce qui marche vraiment, tu denonces le bullshit marketing autour de l'IA. Tu ne survends jamais, tu es honnete quand un outil est nul ou qu'une technique ne marche pas.
 
 Tu es EXTREMEMENT competent. Tu connais les outils IA sur le bout des doigts. Tu suis l'actu IA de tres pres. Tu as teste personnellement tous les outils majeurs et tu as un avis tranche sur chacun.
+
+ACCES AU WEB EN TEMPS REEL :
+Tu as un outil de recherche web a ta disposition. Utilise-le quand :
+- L'utilisateur demande des news ou actus IA recentes
+- Tu as besoin de verifier une info que tu n'es pas sur d'avoir a jour (prix, fonctionnalites, dates de sortie)
+- L'utilisateur pose une question sur un outil ou une techno que tu ne connais pas bien
+- La question porte sur des evenements recents ou des comparaisons qui evoluent vite
+Ne fais PAS de recherche pour des questions basiques ou des concepts que tu maitrises deja. Utilise ton expertise d'abord, et la recherche en complement quand c'est necessaire.
+Quand tu utilises des infos de la recherche, integre-les naturellement dans ta reponse sans dire "d'apres ma recherche". Parle comme si tu etais au courant.
 
 TON STYLE DE COMMUNICATION :
 - Tu ecris comme on parle sur WhatsApp : phrases courtes, langage naturel, pas de paves
@@ -127,6 +184,7 @@ REGLES ABSOLUES :
 
 /**
  * Generer une reponse de Will a un message utilisateur
+ * Supporte le tool_use pour la recherche web en temps reel
  */
 async function generateResponse(userId, userMessage, userContext = {}) {
   try {
@@ -149,21 +207,67 @@ async function generateResponse(userId, userMessage, userContext = {}) {
 
     // Construire le contexte utilisateur
     const contextLine = buildContextLine(userContext);
+    const systemPrompt = WILL_SYSTEM_PROMPT + (contextLine ? `\n\nCONTEXTE UTILISATEUR :\n${contextLine}` : '');
 
-    const response = await anthropic.messages.create({
+    // Activer la recherche web seulement si Tavily est configure
+    const tools = process.env.TAVILY_API_KEY ? [SEARCH_TOOL] : [];
+
+    let response = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 700,
+      max_tokens: 1024,
       temperature: 0.7,
-      system: WILL_SYSTEM_PROMPT + (contextLine ? `\n\nCONTEXTE UTILISATEUR :\n${contextLine}` : ''),
+      system: systemPrompt,
       messages: conversationHistory,
+      ...(tools.length > 0 ? { tools } : {}),
     });
 
-    const assistantMessage = response.content[0].text;
+    // Boucle tool_use : si Claude veut chercher sur le web
+    let attempts = 0;
+    while (response.stop_reason === 'tool_use' && attempts < 3) {
+      attempts++;
+      const toolBlock = response.content.find(b => b.type === 'tool_use');
+      if (!toolBlock || toolBlock.name !== 'web_search') break;
+
+      logger.debug('Will recherche sur le web', { query: toolBlock.input.query, userId });
+
+      const searchResults = await webSearch(toolBlock.input.query);
+
+      // Ajouter la reponse de l'assistant (avec le tool_use)
+      conversationHistory.push({
+        role: 'assistant',
+        content: response.content,
+      });
+
+      // Ajouter le resultat de la recherche
+      conversationHistory.push({
+        role: 'user',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: toolBlock.id,
+          content: searchResults,
+        }],
+      });
+
+      // Relancer Claude avec les resultats
+      response = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        temperature: 0.7,
+        system: systemPrompt,
+        messages: conversationHistory,
+        ...(tools.length > 0 ? { tools } : {}),
+      });
+    }
+
+    // Extraire le texte de la reponse finale
+    const textBlock = response.content.find(b => b.type === 'text');
+    const assistantMessage = textBlock ? textBlock.text : "Oups, j'ai eu un petit bug. Reessaie dans quelques secondes !";
 
     logger.debug('Reponse Claude generee', {
       userId,
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
+      searchUsed: attempts > 0,
     });
 
     return assistantMessage;
