@@ -14,6 +14,7 @@ async function migrate() {
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -21,6 +22,7 @@ async function migrate() {
         display_name VARCHAR(100),
         level VARCHAR(20) DEFAULT 'debutant',
         job VARCHAR(100),
+        interests VARCHAR(200),
         plan VARCHAR(20) DEFAULT 'trial',
         trial_ends_at TIMESTAMPTZ,
         stripe_customer_id VARCHAR(100),
@@ -29,11 +31,14 @@ async function migrate() {
         daily_messages_count INTEGER DEFAULT 0,
         daily_messages_reset_at DATE DEFAULT CURRENT_DATE,
         onboarding_complete BOOLEAN DEFAULT false,
+        onboarding_step INTEGER DEFAULT 0,
+        preferred_hour INTEGER DEFAULT 8,
         timezone VARCHAR(50) DEFAULT 'Europe/Paris',
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS messages (
         id SERIAL PRIMARY KEY,
@@ -45,6 +50,7 @@ async function migrate() {
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS daily_content (
         id SERIAL PRIMARY KEY,
@@ -59,9 +65,16 @@ async function migrate() {
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+
+    // Add columns if they don't exist (for existing databases)
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_step INTEGER DEFAULT 0;`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS interests VARCHAR(200);`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_hour INTEGER DEFAULT 8;`);
+
     await pool.query('CREATE INDEX IF NOT EXISTS idx_users_whatsapp ON users(whatsapp_id);');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_messages_user_created ON messages(user_id, created_at DESC);');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_daily_content_schedule ON daily_content(day_of_week, level, published_at);');
+
     logger.info('Migrations executees avec succes');
     process.exit(0);
   } catch (err) {
