@@ -1,8 +1,10 @@
 require('dotenv').config();
 const express = require('express');
+const path = require('path');
 const logger = require('./utils/logger');
 const webhookRoutes = require('./routes/webhook');
 const stripeRoutes = require('./routes/stripe');
+const adminRoutes = require('./routes/admin');
 const { initDB } = require('./db/pool');
 const { startDailyCron } = require('./cron/scheduler');
 
@@ -10,8 +12,11 @@ const app = express();
 app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
+// Fichiers statiques (dashboard admin)
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', service: 'Will - Coach IA WhatsApp', version: '1.0.0' });
+  res.json({ status: 'ok', service: 'Will - Coach IA WhatsApp', version: '1.1.0' });
 });
 
 app.get('/health', (req, res) => {
@@ -20,6 +25,7 @@ app.get('/health', (req, res) => {
 
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/stripe', stripeRoutes);
+app.use('/api/admin', adminRoutes);
 
 const PORT = process.env.PORT || 3000;
 
@@ -38,3 +44,4 @@ async function start() {
 }
 
 start();
+
