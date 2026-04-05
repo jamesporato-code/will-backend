@@ -4,24 +4,33 @@ const { query } = require('../db/pool');
 const whatsapp = require('../services/whatsapp');
 
 function startDailyCron() {
-  // Tous les jours a 8h (lundi au dimanche)
-  cron.schedule('0 8 * * *', async () => {
-    logger.info('Cron : envoi des messages quotidiens');
-    await sendDailyMessages();
+  // Toutes les heures, on envoie aux utilisateurs dont l'heure preferee correspond
+  cron.schedule('0 * * * *', async () => {
+    const now = new Date();
+    const parisHour = parseInt(now.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', hour12: false }), 10);
+    logger.info('Cron horaire : verification pour ' + parisHour + 'h');
+    await sendDailyMessages(parisHour);
   }, { timezone: 'Europe/Paris' });
 
-  logger.info('Cron planifie : messages quotidiens a 8h (lun-dim)');
+  logger.info('Cron planifie : verification horaire des messages quotidiens');
 }
 
-async function sendDailyMessages() {
+async function sendDailyMessages(currentHour) {
   try {
     const dayOfWeek = new Date().getDay(); // 0 = Dimanche, 1 = Lundi, ... 6 = Samedi
 
     const usersResult = await query(
-      "SELECT id, whatsapp_id, level, display_name, plan FROM users WHERE onboarding_complete = true AND plan != 'cancelled' AND (plan != 'trial' OR trial_ends_at > NOW())"
+      `SELECT id, whatsapp_id, level, display_name, plan, preferred_hour
+       FROM users
+       WHERE onboarding_complete = true
+         AND plan != 'cancelled'
+         AND (plan != 'trial' OR trial_ends_at > NOW())
+         AND COALESCE(preferred_hour, 8) = $1`,
+      [currentHour]
     );
+
     const users = usersResult.rows;
-    logger.info(users.length + ' utilisateurs a notifier');
+    logger.info(users.length + ' utilisateurs a notifier pour ' + currentHour + 'h');
 
     for (const user of users) {
       try {
@@ -37,14 +46,16 @@ async function sendDailyMessages() {
           const greeting = 'Bonjour ' + name + ' !\n\n';
 
           if (content.buttons) {
-            const buttons = typeof content.buttons === 'string' ? JSON.parse(content.buttons) : content.buttons;
+            const buttons = typeof content.buttons === 'string'
+              ? JSON.parse(content.buttons)
+              : content.buttons;
             await whatsapp.sendButtons(user.whatsapp_id, greeting + content.body, buttons, content.title);
           } else {
             await whatsapp.sendText(user.whatsapp_id, greeting + content.body);
           }
         } else {
           await whatsapp.sendText(user.whatsapp_id,
-            'Bonjour ' + name + ' !\n\nUne question IA pour toi ce matin : as-tu essaye un nouvel outil IA cette semaine ?\n\nReponds-moi, je suis curieux !'
+            'Bonjour ' + name + ' !\n\nUne question IA pour toi : as-tu essaye un nouvel outil IA cette semaine ?\n\nReponds-moi, je suis curieux !'
           );
         }
 
@@ -54,7 +65,7 @@ async function sendDailyMessages() {
       }
     }
 
-    logger.info('Messages quotidiens envoyes');
+    logger.info('Messages quotidiens envoyes pour ' + currentHour + 'h');
   } catch (err) {
     logger.error('Erreur cron quotidien', err);
   }
