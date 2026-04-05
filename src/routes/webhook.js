@@ -15,7 +15,7 @@ router.get('/', (req, res) => {
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
   if (mode === 'subscribe' && token === process.env.WHATSAPP_VERIFY_TOKEN) {
-    logger.info('Webhook verifie par Meta');
+    logger.info('Webhook v\u00e9rifi\u00e9 par Meta');
     return res.status(200).send(challenge);
   }
   return res.sendStatus(403);
@@ -28,33 +28,32 @@ router.post('/', async (req, res) => {
     const parsed = whatsapp.parseWebhookMessage(req.body);
     if (!parsed) return;
 
-    logger.info('Message recu', { from: parsed.from, type: parsed.type, text: parsed.text?.substring(0, 50), buttonId: parsed.buttonId || null });
+    logger.info('Message re\u00e7u', { from: parsed.from, type: parsed.type, text: parsed.text?.substring(0, 50), buttonId: parsed.buttonId || null });
 
     await whatsapp.markAsRead(parsed.messageId);
     const user = await userService.findOrCreateUser(parsed.from, parsed.displayName);
 
         // === CONFIRMATION DE PAIEMENT (redirect depuis Stripe) ===
-        // L'utilisateur revient sur WhatsApp avec "paiement_confirme_etudiant" ou "paiement_confirme_pro"
         if (parsed.text?.startsWith('paiement_confirme_')) {
                 const plan = parsed.text.replace('paiement_confirme_', '').trim();
-                logger.info('Paiement confirme via redirect', { userId: user.id, plan });
+                logger.info('Paiement confirm\u00e9 via redirect', { userId: user.id, plan });
 
                 const planName = (plan === 'pro') ? 'pro' : 'etudiant';
                 await userService.updateProfile(user.id, { plan: planName, onboarding_complete: true });
 
-                const planLabel = planName === 'pro' ? 'Pro' : 'Etudiant';
+                const planLabel = planName === 'pro' ? 'Pro' : '\u00c9tudiant';
                 await whatsapp.sendText(user.whatsapp_id,
-                                                'Paiement confirme ! Bienvenue sur le plan ' + planLabel + ' !\n\n' +
-                                                'Ton plan est maintenant actif. Tu peux me poser toutes tes questions sur l\'IA !'
+                                                'Paiement confirm\u00e9 ! \u{1F389} Bienvenue sur le plan ' + planLabel + ' !\n\n' +
+                                                'Ton plan est maintenant actif. Tu peux me poser toutes tes questions sur l\'IA ! \u{1F680}'
                                               );
 
                 await new Promise(r => setTimeout(r, 1500));
 
                 await whatsapp.sendButtons(user.whatsapp_id,
-                                                   "Pour commencer, qu'est-ce qui t'interesse le plus ?",
+                                                   "Pour commencer, qu'est-ce qui t'int\u00e9resse le plus ? \u{1F447}",
                                                    [
-                                                     { id: 'topic_outils', title: 'Decouvrir des outils' },
-                                                     { id: 'topic_prompt', title: 'Ecrire de bons prompts' },
+                                                     { id: 'topic_outils', title: 'D\u00e9couvrir des outils' },
+                                                     { id: 'topic_prompt', title: '\u00c9crire de bons prompts' },
                                                      { id: 'topic_actu', title: 'Actu IA du moment' },
                                                              ]
                                                  );
@@ -101,26 +100,26 @@ router.post('/', async (req, res) => {
 });
 
 async function handleMyAccount(user) {
-  const planNames = { trial: 'Essai gratuit (7j)', freemium: 'Gratuit', etudiant: 'Etudiant', pro: 'Pro', cancelled: 'Annule' };
-  const limits = { trial: 5, freemium: 3, etudiant: 40, pro: 'Illimite' };
+  const planNames = { trial: 'Essai gratuit (7j)', freemium: 'Gratuit', etudiant: '\u00c9tudiant', pro: 'Pro', cancelled: 'Annul\u00e9' };
+  const limits = { trial: 5, freemium: 3, etudiant: 40, pro: 'Illimit\u00e9' };
   const info =
-    "Ton compte Will\n\n" +
-    "Plan : " + (planNames[user.plan] || user.plan) + "\n" +
-    "Niveau : " + (user.level || 'debutant') + "\n" +
-    "Domaine : " + (user.job || 'Non renseigne') + "\n" +
-    "Messages/jour : " + (limits[user.plan] || '?') + "\n" +
-    "Utilises aujourd'hui : " + (user.daily_message_count || 0);
+    "\u{1F464} Ton compte Will\n\n" +
+    "\u{1F4CB} Plan : " + (planNames[user.plan] || user.plan) + "\n" +
+    "\u{1F4CA} Niveau : " + (user.level || 'd\u00e9butant') + "\n" +
+    "\u{1F4BC} Domaine : " + (user.job || 'Non renseign\u00e9') + "\n" +
+    "\u{1F4AC} Messages/jour : " + (limits[user.plan] || '?') + "\n" +
+    "\u2709\uFE0F Utilis\u00e9s aujourd'hui : " + (user.daily_message_count || 0);
 
   if (user.plan === 'pro' || user.plan === 'etudiant') {
     await whatsapp.sendButtons(user.whatsapp_id, info, [
-      { id: 'account_manage', title: 'Gerer mon abo' },
+      { id: 'account_manage', title: 'G\u00e9rer mon abo' },
       { id: 'account_change_level', title: 'Changer niveau' },
     ]);
   } else {
     await whatsapp.sendButtons(user.whatsapp_id, info, [
-      { id: 'plan_etudiant', title: 'Etudiant 4,99\u20ac' },
+      { id: 'plan_etudiant', title: '\u00c9tudiant 4,99\u20ac' },
       { id: 'plan_pro', title: 'Pro 7,99\u20ac' },
-    ], null, 'Passe au niveau superieur');
+    ], null, 'Passe au niveau sup\u00e9rieur \u{1F680}');
   }
 }
 
@@ -145,11 +144,11 @@ async function handleFreeMessage(user, parsed) {
 
 async function handleContentButton(user, parsed) {
   const topicResponses = {
-    topic_outils: "Super choix !\n\nVoici 3 outils IA incontournables :\n\n1. Claude (Anthropic) - Le meilleur pour ecrire, analyser et raisonner\n2. Perplexity - Google dope a l'IA, avec des sources\n3. Gamma - Creer des presentations en 30 secondes\n\nLequel tu veux qu'on explore ensemble ?",
-    topic_prompt: "Le secret d'un bon prompt, c'est la structure \n\nLa formule magique :\nRole + Contexte + Tache + Format\n\nExemple :\n\"Tu es un expert marketing. Mon entreprise vend [X]. Ecris-moi 3 accroches pour une pub Instagram. Format : une phrase + un emoji.\"\n\nEssaie maintenant : envoie-moi un prompt et je te dis comment l'ameliorer !",
-    topic_actu: "Je te prepare un resume actu IA chaque matin.\n\nEn attendant, pose-moi une question sur un sujet qui t'interesse !",
+    topic_outils: "Super choix ! \u{1F4A1}\n\nVoici 3 outils IA incontournables :\n\n1. Claude (Anthropic) \u2013 Le meilleur pour \u00e9crire, analyser et raisonner\n2. Perplexity \u2013 Google dop\u00e9 \u00e0 l'IA, avec des sources\n3. Gamma \u2013 Cr\u00e9er des pr\u00e9sentations en 30 secondes\n\nLequel tu veux qu'on explore ensemble ? \u{1F50D}",
+    topic_prompt: "Le secret d'un bon prompt, c'est la structure \u{1F4DD}\n\nLa formule magique :\nR\u00f4le + Contexte + T\u00e2che + Format\n\nExemple :\n\"Tu es un expert marketing. Mon entreprise vend [X]. \u00c9cris-moi 3 accroches pour une pub Instagram. Format : une phrase + un emoji.\"\n\nEssaie maintenant : envoie-moi un prompt et je te dis comment l'am\u00e9liorer ! \u{1F680}",
+    topic_actu: "Je te pr\u00e9pare un r\u00e9sum\u00e9 actu IA chaque matin \u{1F4F0}\n\nEn attendant, pose-moi une question sur un sujet qui t'int\u00e9resse !",
   };
-  const response = topicResponses[parsed.buttonId] || "Dis-moi en plus et je te guide !";
+  const response = topicResponses[parsed.buttonId] || "Dis-moi en plus et je te guide ! \u{1F4AC}";
   await userService.saveMessage(user.id, 'assistant', response, 'chat');
   await userService.incrementDailyCount(user.id);
   await whatsapp.sendText(user.whatsapp_id, response);
@@ -158,18 +157,18 @@ async function handleContentButton(user, parsed) {
 async function handleLimitReached(user, reason) {
   if (reason === 'trial_expired') {
     await whatsapp.sendButtons(user.whatsapp_id,
-      "Ta periode d'essai de 7 jours est terminee !\n\nPour continuer avec moi :\n\nEtudiant - 4,99\u20ac/mois (40 msg/jour)\nPro - 7,99\u20ac/mois (illimite + priorite)",
+      "Ta p\u00e9riode d'essai de 7 jours est termin\u00e9e ! \u23F3\n\nPour continuer avec moi :\n\n\u{1F393} \u00c9tudiant \u2014 4,99\u20ac/mois (40 msg/jour)\n\u{1F680} Pro \u2014 7,99\u20ac/mois (illimit\u00e9 + priorit\u00e9)",
       [
-        { id: 'plan_etudiant', title: 'Etudiant 4,99\u20ac' },
+        { id: 'plan_etudiant', title: '\u00c9tudiant 4,99\u20ac' },
         { id: 'plan_pro', title: 'Pro 7,99\u20ac' },
       ], null, 'Sans engagement'
     );
   } else if (reason === 'daily_limit') {
     const msg = user.plan === 'etudiant'
-      ? "Tu as atteint ta limite de 40 messages aujourd'hui.\nPasse au Pro pour l'illimite !"
-      : "Tu as atteint ta limite de messages aujourd'hui.\nDebloque plus avec un abonnement !";
+      ? "Tu as atteint ta limite de 40 messages aujourd'hui \u{1F4AC}\nPasse au Pro pour l'illimit\u00e9 ! \u{1F680}"
+      : "Tu as atteint ta limite de messages aujourd'hui \u{1F4AC}\nD\u00e9bloque plus avec un abonnement !";
     await whatsapp.sendButtons(user.whatsapp_id, msg, [
-      { id: 'plan_pro', title: 'Pro - Illimite' },
+      { id: 'plan_pro', title: 'Pro - Illimit\u00e9' },
       { id: 'account_info', title: 'Mon compte' },
     ]);
   }
@@ -182,16 +181,16 @@ async function handleAccountAction(user, parsed) {
 
   if (parsed.buttonId === 'account_change_level') {
     await whatsapp.sendButtons(user.whatsapp_id, 'Quel est ton nouveau niveau ?', [
-      { id: 'level_debutant', title: 'Debutant' },
-      { id: 'level_intermediaire', title: 'Intermediaire' },
-      { id: 'level_avance', title: 'Avance' },
+      { id: 'level_debutant', title: 'D\u00e9butant' },
+      { id: 'level_intermediaire', title: 'Interm\u00e9diaire' },
+      { id: 'level_avance', title: 'Avanc\u00e9' },
     ]);
   }
 
   if (parsed.buttonId?.startsWith('level_') && user.onboarding_complete) {
     const level = parsed.buttonId.replace('level_', '');
     await userService.updateProfile(user.id, { level });
-    await whatsapp.sendText(user.whatsapp_id, "Mis a jour ! Ton niveau est maintenant : " + level);
+    await whatsapp.sendText(user.whatsapp_id, "Mis \u00e0 jour ! \u2705 Ton niveau est maintenant : " + level);
   }
 
   if (parsed.buttonId === 'account_manage') {
@@ -202,15 +201,15 @@ async function handleAccountAction(user, parsed) {
           return_url: 'https://wa.me/33749181083',
         });
         await whatsapp.sendText(user.whatsapp_id,
-          "Gere ton abonnement ici :\n" + portalSession.url + "\n\nTu peux modifier ou annuler a tout moment."
+          "G\u00e8re ton abonnement ici \u{1F447}\n" + portalSession.url + "\n\nTu peux modifier ou annuler \u00e0 tout moment."
         );
       } catch (err) {
         logger.error('Erreur portal Stripe', err.message);
-        await whatsapp.sendText(user.whatsapp_id, "Contacte support@will-ai.fr pour gerer ton abonnement.");
+        await whatsapp.sendText(user.whatsapp_id, "Contacte support@will-ai.fr pour g\u00e9rer ton abonnement \u{1F4E7}");
       }
     } else {
-      await whatsapp.sendButtons(user.whatsapp_id, 'Choisis ton plan :', [
-        { id: 'plan_etudiant', title: 'Etudiant 4,99\u20ac' },
+      await whatsapp.sendButtons(user.whatsapp_id, 'Choisis ton plan \u{1F447}', [
+        { id: 'plan_etudiant', title: '\u00c9tudiant 4,99\u20ac' },
         { id: 'plan_pro', title: 'Pro 7,99\u20ac' },
       ]);
     }
@@ -220,12 +219,12 @@ async function handleAccountAction(user, parsed) {
     const plan = parsed.buttonId.replace('plan_', '');
     const checkoutUrl = await createCheckoutUrl(user, plan);
     if (checkoutUrl) {
-      const planNames = { etudiant: 'Etudiant (4,99\u20ac/mois)', pro: 'Pro (7,99\u20ac/mois)' };
+      const planNames = { etudiant: '\u00c9tudiant (4,99\u20ac/mois)', pro: 'Pro (7,99\u20ac/mois)' };
       await whatsapp.sendText(user.whatsapp_id,
-        "Voici ton lien de paiement pour le plan " + planNames[plan] + " :\n\n" + checkoutUrl + "\n\nPaiement securise par Stripe. Sans engagement."
+        "Voici ton lien de paiement pour le plan " + planNames[plan] + " \u{1F447}\n\n" + checkoutUrl + "\n\n\u{1F512} Paiement s\u00e9curis\u00e9 par Stripe. Sans engagement."
       );
     } else {
-      await whatsapp.sendText(user.whatsapp_id, "Erreur lors de la creation du lien. Reessaie dans quelques instants !");
+      await whatsapp.sendText(user.whatsapp_id, "Erreur lors de la cr\u00e9ation du lien \u{1F615} R\u00e9essaie dans quelques instants !");
     }
   }
 }
@@ -252,3 +251,4 @@ async function createCheckoutUrl(user, plan) {
 }
 
 module.exports = router;
+
