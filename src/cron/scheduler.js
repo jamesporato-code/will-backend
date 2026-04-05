@@ -4,15 +4,15 @@ const { query } = require('../db/pool');
 const whatsapp = require('../services/whatsapp');
 
 function startDailyCron() {
-  // Toutes les heures, on envoie aux utilisateurs dont l'heure preferee correspond
+  // Toutes les heures, on envoie aux utilisateurs dont l'heure pr\u00e9f\u00e9r\u00e9e correspond
   cron.schedule('0 * * * *', async () => {
     const now = new Date();
     const parisHour = parseInt(now.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', hour12: false }), 10);
-    logger.info('Cron horaire : verification pour ' + parisHour + 'h');
+    logger.info('Cron horaire : v\u00e9rification pour ' + parisHour + 'h');
     await sendDailyMessages(parisHour);
   }, { timezone: 'Europe/Paris' });
 
-  logger.info('Cron planifie : verification horaire des messages quotidiens');
+  logger.info('Cron planifi\u00e9 : v\u00e9rification horaire des messages quotidiens');
 }
 
 async function sendDailyMessages(currentHour) {
@@ -30,7 +30,7 @@ async function sendDailyMessages(currentHour) {
     );
 
     const users = usersResult.rows;
-    logger.info(users.length + ' utilisateurs a notifier pour ' + currentHour + 'h');
+    logger.info(users.length + ' utilisateurs \u00e0 notifier pour ' + currentHour + 'h');
 
     for (const user of users) {
       try {
@@ -43,7 +43,7 @@ async function sendDailyMessages(currentHour) {
 
         if (contentResult.rows.length > 0) {
           const content = contentResult.rows[0];
-          const greeting = 'Bonjour ' + name + ' !\n\n';
+          const greeting = 'Bonjour ' + name + ' ! \u{1F44B}\n\n';
 
           if (content.buttons) {
             const buttons = typeof content.buttons === 'string'
@@ -55,20 +55,21 @@ async function sendDailyMessages(currentHour) {
           }
         } else {
           await whatsapp.sendText(user.whatsapp_id,
-            'Bonjour ' + name + ' !\n\nUne question IA pour toi : as-tu essaye un nouvel outil IA cette semaine ?\n\nReponds-moi, je suis curieux !'
+            'Bonjour ' + name + ' ! \u{1F44B}\n\nUne question IA pour toi : as-tu essay\u00e9 un nouvel outil IA cette semaine ?\n\nR\u00e9ponds-moi, je suis curieux ! \u{1F914}'
           );
         }
 
         await new Promise(resolve => setTimeout(resolve, 200));
       } catch (err) {
-        logger.error('Erreur envoi quotidien a ' + user.whatsapp_id, err.message);
+        logger.error('Erreur envoi quotidien \u00e0 ' + user.whatsapp_id, err.message);
       }
     }
 
-    logger.info('Messages quotidiens envoyes pour ' + currentHour + 'h');
+    logger.info('Messages quotidiens envoy\u00e9s pour ' + currentHour + 'h');
   } catch (err) {
     logger.error('Erreur cron quotidien', err);
   }
 }
 
 module.exports = { startDailyCron, sendDailyMessages };
+
