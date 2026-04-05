@@ -33,6 +33,34 @@ router.post('/', async (req, res) => {
     await whatsapp.markAsRead(parsed.messageId);
     const user = await userService.findOrCreateUser(parsed.from, parsed.displayName);
 
+        // === CONFIRMATION DE PAIEMENT (redirect depuis Stripe) ===
+        // L'utilisateur revient sur WhatsApp avec "paiement_confirme_etudiant" ou "paiement_confirme_pro"
+        if (parsed.text?.startsWith('paiement_confirme_')) {
+                const plan = parsed.text.replace('paiement_confirme_', '').trim();
+                logger.info('Paiement confirme via redirect', { userId: user.id, plan });
+
+                const planName = (plan === 'pro') ? 'pro' : 'etudiant';
+                await userService.updateProfile(user.id, { plan: planName, onboarding_complete: true });
+
+                const planLabel = planName === 'pro' ? 'Pro' : 'Etudiant';
+                await whatsapp.sendText(user.whatsapp_id,
+                                                'Paiement confirme ! Bienvenue sur le plan ' + planLabel + ' !\n\n' +
+                                                'Ton plan est maintenant actif. Tu peux me poser toutes tes questions sur l\'IA !'
+                                              );
+
+                await new Promise(r => setTimeout(r, 1500));
+
+                await whatsapp.sendButtons(user.whatsapp_id,
+                                                   "Pour commencer, qu'est-ce qui t'interesse le plus ?",
+                                                   [
+                                                     { id: 'topic_outils', title: 'Decouvrir des outils' },
+                                                     { id: 'topic_prompt', title: 'Ecrire de bons prompts' },
+                                                     { id: 'topic_actu', title: 'Actu IA du moment' },
+                                                             ]
+                                                 );
+                return;
+        }
+
     // "mon compte" command
     const textLower = (parsed.text || '').toLowerCase().trim();
     if (textLower === 'mon compte' || textLower === 'compte' || textLower === 'abonnement') {
