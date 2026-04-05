@@ -1,26 +1,27 @@
 const whatsapp = require('./whatsapp');
 const { updateProfile } = require('./userService');
 const logger = require('../utils/logger');
+const Stripe = require('stripe');
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // Onboarding steps:
-// 0 (null) = welcome + ask name
-// 1 = got name, ask level
-// 2 = got level, ask job sector
-// 3 = got job, ask specific goal
-// 4 = got goal, show profile recap + ask plan choice
-// 5 = got plan choice, complete
+// 0 = welcome + ask level
+// 1 = got level, ask job sector (via list)
+// 2 = got job, ask specific goal
+// 3 = got goal, show recap + ask plan choice
+// 4 = got plan choice, complete
 
 async function handleOnboarding(user, parsed) {
   const step = user.onboarding_step || 0;
   const name = user.display_name?.split(' ')[0] || '';
 
-  logger.info('Onboarding step', { userId: user.id, step, buttonId: parsed.buttonId, text: parsed.text?.substring(0, 30) });
+  logger.info('Onboarding step', { userId: user.id, step, buttonId: parsed.buttonId, listId: parsed.listId, text: parsed.text?.substring(0, 30) });
 
-  // Step 0: First message ever - welcome + ask for first name
+  // Step 0: First message ever - welcome + ask level
   if (step === 0) {
     const greeting = name ? ('Salut ' + name + ' !') : 'Salut !';
     await whatsapp.sendText(
@@ -49,7 +50,7 @@ async function handleOnboarding(user, parsed) {
     return true;
   }
 
-  // Step 1: Got level - ask job sector
+  // Step 1: Got level - ask job sector via list
   if (step === 1 && parsed.buttonId?.startsWith('ob_level_')) {
     const level = parsed.buttonId.replace('ob_level_', '');
     await updateProfile(user.id, { level, onboarding_step: 2 });
@@ -70,11 +71,11 @@ async function handleOnboarding(user, parsed) {
       [{
         title: "Domaines",
         rows: [
-          { id: 'ob_job_marketing', title: 'Marketing / Comm', description: 'Pub, contenu, reseaux sociaux, branding' },
+          { id: 'ob_job_marketing', title: 'Marketing / Comm', description: 'Pub, contenu, reseaux sociaux' },
           { id: 'ob_job_tech', title: 'Tech / Dev', description: 'Developpement, data, produit, IT' },
-          { id: 'ob_job_business', title: 'Business / Finance', description: 'Vente, gestion, conseil, finance' },
+          { id: 'ob_job_business', title: 'Business / Finance', description: 'Vente, gestion, conseil' },
           { id: 'ob_job_creation', title: 'Creation / Design', description: 'Graphisme, video, UX, photo' },
-          { id: 'ob_job_education', title: 'Education / RH', description: 'Formation, recrutement, enseignement' },
+          { id: 'ob_job_education', title: 'Education / RH', description: 'Formation, recrutement' },
           { id: 'ob_job_sante', title: 'Sante / Sciences', description: 'Medical, recherche, pharma' },
           { id: 'ob_job_etudiant', title: 'Etudiant', description: 'Licence, master, doctorat' },
           { id: 'ob_job_autre', title: 'Autre', description: 'Autre secteur ou independant' },
@@ -115,7 +116,7 @@ async function handleOnboarding(user, parsed) {
     return true;
   }
 
-  // Step 3: Got goal - show profile recap + plan choice
+  // Step 3: Got goal - show recap + plan choice
   if (step === 3 && parsed.buttonId?.startsWith('ob_goal_')) {
     const goalMap = {
       ob_goal_productivite: 'Gagner en productivite',
@@ -125,7 +126,6 @@ async function handleOnboarding(user, parsed) {
     const interests = goalMap[parsed.buttonId] || 'Explorer l\'IA';
     await updateProfile(user.id, { interests, onboarding_step: 4 });
 
-    // Profile recap
     const recap =
       "Ton profil Will est pret !\n\n" +
       "Niveau : " + (user.level || 'debutant') + "\n" +
@@ -136,7 +136,6 @@ async function handleOnboarding(user, parsed) {
     await whatsapp.sendText(user.whatsapp_id, recap);
     await delay(2000);
 
-    // Plan choice
     await whatsapp.sendButtons(
       user.whatsapp_id,
       "Derniere etape : choisis comment tu veux utiliser Will.\n\n" +
@@ -158,8 +157,10 @@ async function handleOnboarding(user, parsed) {
   // Step 4: Got plan choice - complete onboarding
   if (step === 4 && parsed.buttonId?.startsWith('ob_plan_')) {
     const planChoice = parsed.buttonId.replace('ob_plan_', '');
+
+    // Always start on trial - Stripe webhook upgrades when paid
     await updateProfile(user.id, {
-      plan: planChoice === 'trial' ? 'trial' : planChoice,
+      plan: 'trial',
       onboarding_complete: true,
       onboarding_step: 5,
     });
@@ -172,15 +173,27 @@ async function handleOnboarding(user, parsed) {
         "En attendant, pose-moi ta premiere question sur l'IA !"
       );
     } else {
-      // They want a paid plan - send Stripe checkout link
-      await whatsapp.sendText(
-        user.whatsapp_id,
-        "Excellent choix ! Je t'envoie le lien de paiement dans un instant.\n\n" +
-        "En attendant, ton essai gratuit est actif - tu peux deja me poser des questions !"
-      );
-      // The plan_etudiant / plan_pro handler in webhook.js will handle the Stripe link
-      // We trigger it by simulating the button
-      const { handlePlanSelection } = require('./stripe');
+      // They want a paid plan - create Stripe checkout
+      const checkoutUrl = await createCheckoutUrl(user, planChoice);
+      if (checkoutUrl) {
+        const planNames = { etudiant: 'Etudiant (4,99\u20ac/mois)', pro: 'Pro (7,99\u20ac/mois)' };
+        await whatsapp.sendText(
+          user.whatsapp_id,
+          "Excellent choix ! Voici ton lien de paiement pour le plan " +
+            (planNames[planChoice] || planChoice) +
+            " :\n\n" +
+            checkoutUrl +
+            "\n\nPaiement securise par Stripe. Sans engagement.\n\n" +
+            "En attendant, ton essai gratuit est actif - pose-moi deja tes questions !"
+        );
+      } else {
+        await whatsapp.sendText(
+          user.whatsapp_id,
+          "C'est parti ! Ton essai gratuit est actif.\n\n" +
+          "Tu pourras passer au plan payant a tout moment en tapant 'mon compte'.\n\n" +
+          "Pose-moi ta premiere question sur l'IA !"
+        );
+      }
     }
 
     await delay(1500);
@@ -198,19 +211,50 @@ async function handleOnboarding(user, parsed) {
     return true;
   }
 
-  // If we get here with a text message during onboarding, restart from current step
+  // If text message during onboarding, gently redirect
   if (!parsed.buttonId && !parsed.listId) {
-    // User sent a free text during onboarding - gently redirect
     await whatsapp.sendText(
       user.whatsapp_id,
-      "On finit d'abord la configuration et apres tu pourras me poser toutes tes questions ! Utilise les boutons ci-dessus pour continuer."
+      "On finit d'abord la configuration rapide et apres tu pourras me poser toutes tes questions ! Utilise les boutons ci-dessus pour continuer."
     );
     return true;
   }
 
-  // Unrecognized button during onboarding
+  // Unrecognized button during onboarding - log and let it fall through
   logger.warn('Unrecognized onboarding input', { step, buttonId: parsed.buttonId, listId: parsed.listId });
   return false;
+}
+
+async function createCheckoutUrl(user, plan) {
+  try {
+    const priceIds = {
+      etudiant: process.env.STRIPE_PRICE_ETUDIANT,
+      pro: process.env.STRIPE_PRICE_PRO,
+    };
+    const priceId = priceIds[plan];
+    if (!priceId) {
+      logger.error('Price ID manquant pour plan: ' + plan);
+      return null;
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: (process.env.SITE_URL || 'https://will-ai.fr') + '/merci?session_id={CHECKOUT_SESSION_ID}',
+      cancel_url: (process.env.SITE_URL || 'https://will-ai.fr') + '/offres',
+      metadata: {
+        userId: String(user.id),
+        whatsappId: user.whatsapp_id,
+        plan: plan,
+      },
+      allow_promotion_codes: true,
+    });
+    return session.url;
+  } catch (err) {
+    logger.error('Erreur creation checkout Stripe onboarding', err.message);
+    return null;
+  }
 }
 
 module.exports = { handleOnboarding };
