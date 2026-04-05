@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Will - Admin Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+  <style>
+    body { background: #0f172a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .card { background: #1e293b; border-radius: 12px; border: 1px solid #334155; }
+    .card-accent { border-left: 4px solid #6366f1; }
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+    .badge-trial { background: #1e3a5f; color: #60a5fa; }
+    .badge-freemium { background: #1a3329; color: #34d399; }
+    .badge-etudiant { background: #3b1f54; color: #a78bfa; }
+    .badge-pro { background: #422006; color: #fbbf24; }
+    .badge-cancelled { background: #3b1212; color: #f87171; }
+    .tab-active { border-bottom: 2px solid #6366f1; color: #fff; }
+    .tab-inactive { color: #94a3b8; }
+    .tab-inactive:hover { color: #cbd5e1; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 12px 16px; font-size: 12px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #334155; }
+    td { padding: 12px 16px; border-bottom: 1px solid #1e293b; font-size: 14px; }
+    tr:hover td { background: #1e293b; }
+    input, select { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; border-radius: 8px; padding: 8px 12px; font-size: 14px; }
+    input:focus, select:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99,102,241,0.2); }
+    .btn { padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+    .btn-primary { background: #6366f1; color: #fff; border: none; }
+    .btn-primary:hover { background: #4f46e5; }
+    .btn-ghost { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+    .btn-ghost:hover { color: #e2e8f0; border-color: #6366f1; }
+    .sparkbar { display: flex; align-items: flex-end; gap: 2px; height: 40px; }
+    .sparkbar div { background: #6366f1; border-radius: 2px; min-width: 6px; transition: height 0.3s; }
+    .sparkbar div:hover { background: #818cf8; }
+    .loader { border: 3px solid #334155; border-top: 3px solid #6366f1; border-radius: 50%; width: 32px; height: 32px; animation: spin 0.8s linear infinite; margin: 40px auto; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 50; display: flex; align-items: center; justify-content: center; }
+    .modal { background: #1e293b; border-radius: 16px; border: 1px solid #334155; max-width: 700px; width: 95%; max-height: 85vh; overflow-y: auto; padding: 24px; }
+    .msg-user { background: #1a3329; border-radius: 12px; padding: 8px 12px; margin: 4px 0; }
+    .msg-bot { background: #1e3a5f; border-radius: 12px; padding: 8px 12px; margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback } = React;
+
+    const API_BASE = '/api/admin';
+    let TOKEN = localStorage.getItem('admin_token') || '';
+
+    function api(path) {
+      return fetch(API_BASE + path, {
+        headers: { 'x-admin-token': TOKEN }
+      }).then(r => {
+        if (r.status === 401) throw new Error('AUTH');
+        return r.json();
+      });
+    }
+
+    // ---- Login Screen ----
+    function LoginScreen({ onLogin }) {
+      const [token, setToken] = useState('');
+      const [error, setError] = useState('');
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        TOKEN = token;
+        try {
+          await api('/stats');
+          localStorage.setItem('admin_token', token);
+          onLogin();
+        } catch {
+          setError('Token invalide');
+        }
+      };
+      return (
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100vh'}}>
+          <div className="card" style={{padding:32,width:380}}>
+            <h1 style={{fontSize:24,fontWeight:700,marginBottom:4}}>Will Admin</h1>
+            <p style={{color:'#94a3b8',marginBottom:24,fontSize:14}}>Entre ton token admin pour acceder au dashboard</p>
+            <form onSubmit={handleSubmit}>
+              <input type="password" value={token} onChange={e=>setToken(e.target.value)}
+                placeholder="Token admin" style={{width:'100%',marginBottom:12}} autoFocus />
+              {error && <p style={{color:'#f87171',fontSize:13,marginBottom:8}}>{error}</p>}
+              <button type="submit" className="btn btn-primary" style={{width:'100%'}}>Connexion</button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // ---- Stat Card ----
+    function StatCard({ label, value, sub, accent }) {
+      return (
+        <div className="card card-accent" style={{padding:20,borderLeftColor:accent||'#6366f1'}}>
+          <div style={{fontSize:13,color:'#94a3b8',marginBottom:4}}>{label}</div>
+          <div style={{fontSize:28,fontWeight:700}}>{value}</div>
+          {sub && <div style={{fontSize:12,color:'#64748b',marginTop:2}}>{sub}</div>}
+        </div>
+      );
+    }
+
+    // ---- Sparkline ----
+    function Sparkline({ data, color }) {
+      if (!data || data.length === 0) return null;
+      const max = Math.max(...data.map(d => parseInt(d.count)), 1);
+      return (
+        <div className="sparkbar">
+          {data.map((d, i) => (
+            <div key={i} title={d.date + ': ' + d.count}
+              style={{height: Math.max(4, (parseInt(d.count)/max)*40), background: color || '#6366f1'}} />
+          ))}
+        </div>
+      );
+    }
+
+    // ---- Plan Badge ----
+    function PlanBadge({ plan }) {
+      const cls = {trial:'badge-trial',freemium:'badge-freemium',etudiant:'badge-etudiant',pro:'badge-pro',cancelled:'badge-cancelled'};
+      const labels = {trial:'Trial',freemium:'Freemium',etudiant:'Etudiant',pro:'Pro',cancelled:'Annule'};
+      return <span className={'badge ' + (cls[plan]||'badge-trial')}>{labels[plan]||plan}</span>;
+    }
+
+    // ---- User Detail Modal ----
+    function UserModal({ userId, onClose }) {
+      const [data, setData] = useState(null);
+      useEffect(() => {
+        api('/user/' + userId).then(setData).catch(console.error);
+      }, [userId]);
+
+      if (!data) return (
+        <div className="modal-overlay" onClick={onClose}>
+          <div className="modal" onClick={e=>e.stopPropagation()}><div className="loader" /></div>
+        </div>
+      );
+
+      const u = data.user;
+      return (
+        <div className="modal-overlay" onClick={onClose}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <h2 style={{fontSize:20,fontWeight:700}}>{u.display_name || 'Sans nom'}</h2>
+              <button onClick={onClose} style={{color:'#94a3b8',fontSize:20,cursor:'pointer',background:'none',border:'none'}}>✕</button>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:20}}>
+              <div><span style={{color:'#64748b',fontSize:12}}>WhatsApp</span><br/>{u.whatsapp_id}</div>
+              <div><span style={{color:'#64748b',fontSize:12}}>Plan</span><br/><PlanBadge plan={u.plan} /></div>
+              <div><span style={{color:'#64748b',fontSize:12}}>Niveau</span><br/>{u.level}</div>
+              <div><span style={{color:'#64748b',fontSize:12}}>Metier</span><br/>{u.job || '-'}</div>
+              <div><span style={{color:'#64748b',fontSize:12}}>Messages</span><br/>{u.user_messages} envoyes / {u.bot_messages} recus</div>
+              <div><span style={{color:'#64748b',fontSize:12}}>Inscrit le</span><br/>{new Date(u.created_at).toLocaleDateString('fr-FR')}</div>
+              <div><span style={{color:'#64748b',fontSize:12}}>Heure preferee</span><br/>{u.preferred_hour}h</div>
+              <div><span style={{color:'#64748b',fontSize:12}}>Derniere activite</span><br/>{u.last_activity ? new Date(u.last_activity).toLocaleDateString('fr-FR') : '-'}</div>
+            </div>
+
+            {data.activity.length > 0 && (
+              <div style={{marginBottom:20}}>
+                <div style={{fontSize:13,color:'#94a3b8',marginBottom:8}}>Activite (14 jours)</div>
+                <Sparkline data={data.activity} color="#6366f1" />
+              </div>
+            )}
+
+            <div style={{fontSize:13,color:'#94a3b8',marginBottom:8}}>Derniers messages</div>
+            <div style={{maxHeight:300,overflowY:'auto'}}>
+              {data.recentMessages.map((m, i) => (
+                <div key={i} className={m.role === 'user' ? 'msg-user' : 'msg-bot'}>
+                  <div style={{fontSize:11,color:'#64748b',marginBottom:2}}>
+                    {m.role === 'user' ? 'Utilisateur' : 'Will'} - {new Date(m.created_at).toLocaleString('fr-FR')}
+                  </div>
+                  <div style={{fontSize:13,whiteSpace:'pre-wrap'}}>{typeof m.content === 'string' ? m.content.substring(0, 500) : '[contenu complexe]'}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ---- Overview Tab ----
+    function OverviewTab({ stats }) {
+      if (!stats) return <div className="loader" />;
+      const o = stats.overview;
+      return (
+        <div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:16,marginBottom:32}}>
+            <StatCard label="Utilisateurs total" value={o.totalUsers} sub={'+' + o.newUsersWeek + ' cette semaine'} accent="#6366f1" />
+            <StatCard label="Onboarding complet" value={o.onboardedUsers} sub={((o.onboardedUsers/Math.max(o.totalUsers,1))*100).toFixed(0) + '% du total'} accent="#34d399" />
+            <StatCard label="Abonnes payants" value={o.paidUsers} sub={'Conversion: ' + o.conversionRate + '%'} accent="#fbbf24" />
+            <StatCard label="Messages total" value={o.totalMessages.toLocaleString()} sub={o.messagesToday + " aujourd'hui"} accent="#f472b6" />
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:32}}>
+            <div className="card" style={{padding:20}}>
+              <div style={{fontSize:14,fontWeight:600,marginBottom:12}}>Inscriptions (30 jours)</div>
+              <Sparkline data={stats.signupsByDay} color="#6366f1" />
+            </div>
+            <div className="card" style={{padding:20}}>
+              <div style={{fontSize:14,fontWeight:600,marginBottom:12}}>Messages (14 jours)</div>
+              <Sparkline data={stats.messagesByDay} color="#f472b6" />
+            </div>
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+            <div className="card" style={{padding:20}}>
+              <div style={{fontSize:14,fontWeight:600,marginBottom:12}}>Repartition par plan</div>
+              {stats.planStats.map(p => (
+                <div key={p.plan} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',borderBottom:'1px solid #1e293b'}}>
+                  <PlanBadge plan={p.plan} />
+                  <span style={{fontWeight:600}}>{p.count}</span>
+                </div>
+              ))}
+            </div>
+            <div className="card" style={{padding:20}}>
+              <div style={{fontSize:14,fontWeight:600,marginBottom:12}}>Repartition par niveau</div>
+              {stats.levelStats.map(l => (
+                <div key={l.level} style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #1e293b'}}>
+                  <span>{l.level}</span>
+                  <span style={{fontWeight:600}}>{l.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ---- Users Tab ----
+    function UsersTab() {
+      const [users, setUsers] = useState([]);
+      const [total, setTotal] = useState(0);
+      const [loading, setLoading] = useState(true);
+      const [search, setSearch] = useState('');
+      const [planFilter, setPlanFilter] = useState('');
+      const [levelFilter, setLevelFilter] = useState('');
+      const [sort, setSort] = useState('created_at');
+      const [order, setOrder] = useState('desc');
+      const [page, setPage] = useState(0);
+      const [selectedUser, setSelectedUser] = useState(null);
+      const limit = 30;
+
+      const loadUsers = useCallback(() => {
+        setLoading(true);
+        let url = '/users?limit=' + limit + '&offset=' + (page * limit) + '&sort=' + sort + '&order=' + order;
+        if (search) url += '&search=' + encodeURIComponent(search);
+        if (planFilter) url += '&plan=' + planFilter;
+        if (levelFilter) url += '&level=' + levelFilter;
+        api(url).then(data => {
+          setUsers(data.users);
+          setTotal(data.total);
+          setLoading(false);
+        }).catch(console.error);
+      }, [search, planFilter, levelFilter, sort, order, page]);
+
+      useEffect(() => { loadUsers(); }, [loadUsers]);
+
+      const toggleSort = (col) => {
+        if (sort === col) setOrder(o => o === 'asc' ? 'desc' : 'asc');
+        else { setSort(col); setOrder('desc'); }
+      };
+
+      const SortIcon = ({ col }) => sort === col ? (order === 'asc' ? ' ↑' : ' ↓') : '';
+
+      return (
+        <div>
+          {selectedUser && <UserModal userId={selectedUser} onClose={() => setSelectedUser(null)} />}
+
+          <div style={{display:'flex',gap:12,marginBottom:20,flexWrap:'wrap'}}>
+            <input placeholder="Rechercher (nom, tel, metier)..." value={search}
+              onChange={e => { setSearch(e.target.value); setPage(0); }}
+              style={{flex:1,minWidth:200}} />
+            <select value={planFilter} onChange={e => { setPlanFilter(e.target.value); setPage(0); }}>
+              <option value="">Tous les plans</option>
+              <option value="trial">Trial</option>
+              <option value="freemium">Freemium</option>
+              <option value="etudiant">Etudiant</option>
+              <option value="pro">Pro</option>
+              <option value="cancelled">Annule</option>
+            </select>
+            <select value={levelFilter} onChange={e => { setLevelFilter(e.target.value); setPage(0); }}>
+              <option value="">Tous les niveaux</option>
+              <option value="debutant">Debutant</option>
+              <option value="intermediaire">Intermediaire</option>
+              <option value="avance">Avance</option>
+            </select>
+          </div>
+
+          <div className="card" style={{overflow:'auto'}}>
+            {loading ? <div className="loader" /> : (
+              <table>
+                <thead>
+                  <tr>
+                    <th onClick={()=>toggleSort('display_name')} style={{cursor:'pointer'}}>Nom<SortIcon col="display_name" /></th>
+                    <th>WhatsApp</th>
+                    <th onClick={()=>toggleSort('plan')} style={{cursor:'pointer'}}>Plan<SortIcon col="plan" /></th>
+                    <th onClick={()=>toggleSort('level')} style={{cursor:'pointer'}}>Niveau<SortIcon col="level" /></th>
+                    <th>Metier</th>
+                    <th onClick={()=>toggleSort('message_count')} style={{cursor:'pointer'}}>Messages<SortIcon col="message_count" /></th>
+                    <th onClick={()=>toggleSort('last_message_at')} style={{cursor:'pointer'}}>Dernier msg<SortIcon col="last_message_at" /></th>
+                    <th onClick={()=>toggleSort('created_at')} style={{cursor:'pointer'}}>Inscrit le<SortIcon col="created_at" /></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map(u => (
+                    <tr key={u.id} onClick={() => setSelectedUser(u.id)} style={{cursor:'pointer'}}>
+                      <td style={{fontWeight:500}}>{u.display_name || '-'}</td>
+                      <td style={{fontSize:12,color:'#94a3b8'}}>{u.whatsapp_id}</td>
+                      <td><PlanBadge plan={u.plan} /></td>
+                      <td>{u.level}</td>
+                      <td style={{fontSize:13,color:'#94a3b8'}}>{u.job || '-'}</td>
+                      <td>{u.message_count}</td>
+                      <td style={{fontSize:13}}>{u.last_message_at ? new Date(u.last_message_at).toLocaleDateString('fr-FR') : '-'}</td>
+                      <td style={{fontSize:13}}>{new Date(u.created_at).toLocaleDateString('fr-FR')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:16}}>
+            <span style={{fontSize:13,color:'#94a3b8'}}>{total} utilisateur{total > 1 ? 's' : ''}</span>
+            <div style={{display:'flex',gap:8}}>
+              <button className="btn btn-ghost" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>Precedent</button>
+              <span style={{padding:'8px 12px',fontSize:14}}>Page {page + 1} / {Math.max(1, Math.ceil(total / limit))}</span>
+              <button className="btn btn-ghost" onClick={() => setPage(p => p + 1)} disabled={(page + 1) * limit >= total}>Suivant</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ---- Revenue Tab ----
+    function RevenueTab() {
+      const [data, setData] = useState(null);
+      useEffect(() => { api('/revenue').then(setData).catch(console.error); }, []);
+
+      if (!data) return <div className="loader" />;
+
+      return (
+        <div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:16,marginBottom:32}}>
+            <StatCard label="MRR" value={data.mrr.toFixed(2) + ' EUR'} accent="#34d399" />
+            <StatCard label="Abonnements actifs" value={data.activeSubscriptions} accent="#6366f1" />
+            <StatCard label="Revenus (30j)" value={data.totalRevenue30d.toFixed(2) + ' EUR'} accent="#fbbf24" />
+            <StatCard label="Churn rate" value={data.churnRate + '%'} sub={data.cancelledCount + ' annulations'} accent="#f87171" />
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+            <div className="card" style={{padding:20}}>
+              <div style={{fontSize:14,fontWeight:600,marginBottom:16}}>Abonnements actifs</div>
+              <div style={{maxHeight:400,overflowY:'auto'}}>
+                {data.subscriptions.map((s, i) => (
+                  <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:'1px solid #334155'}}>
+                    <div>
+                      <div style={{fontWeight:500,fontSize:14}}>{s.customerName || s.customerEmail || 'Client'}</div>
+                      <div style={{fontSize:12,color:'#64748b'}}>{s.plan} - depuis le {new Date(s.created).toLocaleDateString('fr-FR')}</div>
+                    </div>
+                    <div style={{fontWeight:600,color:'#34d399'}}>{s.amount} {s.currency.toUpperCase()}/mois</div>
+                  </div>
+                ))}
+                {data.subscriptions.length === 0 && <p style={{color:'#64748b',fontSize:14}}>Aucun abonnement actif</p>}
+              </div>
+            </div>
+
+            <div className="card" style={{padding:20}}>
+              <div style={{fontSize:14,fontWeight:600,marginBottom:16}}>Paiements recents (30j)</div>
+              <div style={{maxHeight:400,overflowY:'auto'}}>
+                {data.recentPayments.map((p, i) => (
+                  <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:'1px solid #334155'}}>
+                    <div>
+                      <div style={{fontWeight:500,fontSize:14}}>{p.customerEmail || 'Client'}</div>
+                      <div style={{fontSize:12,color:'#64748b'}}>{new Date(p.date).toLocaleDateString('fr-FR')}</div>
+                    </div>
+                    <div style={{fontWeight:600,color:'#34d399'}}>+{p.amount} {p.currency.toUpperCase()}</div>
+                  </div>
+                ))}
+                {data.recentPayments.length === 0 && <p style={{color:'#64748b',fontSize:14}}>Aucun paiement recent</p>}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ---- Main App ----
+    function App() {
+      const [authed, setAuthed] = useState(!!TOKEN);
+      const [tab, setTab] = useState('overview');
+      const [stats, setStats] = useState(null);
+
+      useEffect(() => {
+        if (authed) {
+          api('/stats').then(setStats).catch(err => {
+            if (err.message === 'AUTH') { TOKEN = ''; localStorage.removeItem('admin_token'); setAuthed(false); }
+          });
+        }
+      }, [authed]);
+
+      if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
+
+      const tabs = [
+        { id: 'overview', label: 'Vue globale' },
+        { id: 'users', label: 'Utilisateurs' },
+        { id: 'revenue', label: 'Revenus' },
+      ];
+
+      return (
+        <div style={{maxWidth:1200,margin:'0 auto',padding:24}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:32}}>
+            <div>
+              <h1 style={{fontSize:24,fontWeight:700}}>Will - Dashboard Admin</h1>
+              <p style={{color:'#64748b',fontSize:14}}>Coach IA WhatsApp</p>
+            </div>
+            <button className="btn btn-ghost" onClick={() => {
+              TOKEN = ''; localStorage.removeItem('admin_token'); setAuthed(false);
+            }}>Deconnexion</button>
+          </div>
+
+          <div style={{display:'flex',gap:24,marginBottom:32,borderBottom:'1px solid #334155'}}>
+            {tabs.map(t => (
+              <div key={t.id} onClick={() => setTab(t.id)}
+                className={tab === t.id ? 'tab-active' : 'tab-inactive'}
+                style={{paddingBottom:12,cursor:'pointer',fontSize:15,fontWeight:500}}>
+                {t.label}
+              </div>
+            ))}
+          </div>
+
+          {tab === 'overview' && <OverviewTab stats={stats} />}
+          {tab === 'users' && <UsersTab />}
+          {tab === 'revenue' && <RevenueTab />}
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
+
