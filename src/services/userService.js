@@ -37,7 +37,6 @@ async function canSendMessage(user) {
   }
 
   if (user.daily_message_count >= limit) return { allowed: false, reason: 'daily_limit' };
-
   return { allowed: true };
 }
 
@@ -49,7 +48,10 @@ async function incrementDailyCount(userId) {
 }
 
 async function updateProfile(userId, updates) {
-  const allowed = ['name', 'display_name', 'job', 'level', 'interests', 'plan', 'onboarding_complete', 'onboarding_step', 'stripe_customer_id', 'stripe_subscription_id'];
+  const allowed = ['name', 'display_name', 'job', 'level', 'interests', 'plan',
+    'onboarding_complete', 'onboarding_step', 'stripe_customer_id',
+    'stripe_subscription_id', 'preferred_hour'];
+
   const fields = Object.keys(updates).filter(k => allowed.includes(k));
   if (fields.length === 0) return;
 
