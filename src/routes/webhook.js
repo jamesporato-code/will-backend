@@ -24,6 +24,28 @@ router.get('/', (req, res) => {
 // Messages entrants
 router.post('/', async (req, res) => {
   res.sendStatus(200);
+
+  // === LOG DELIVERY STATUS CALLBACKS ===
+  try {
+    const value = req.body?.entry?.[0]?.changes?.[0]?.value;
+    if (value?.statuses) {
+      value.statuses.forEach(s => {
+        logger.info('WhatsApp STATUS CALLBACK', {
+          messageId: s.id,
+          status: s.status,
+          recipientId: s.recipient_id,
+          timestamp: s.timestamp,
+          errors: s.errors ? JSON.stringify(s.errors) : null,
+          conversation: s.conversation ? JSON.stringify(s.conversation) : null,
+          pricing: s.pricing ? JSON.stringify(s.pricing) : null,
+        });
+      });
+      return; // Status callbacks don't need further processing
+    }
+  } catch (statusErr) {
+    logger.error('Error logging status callback', statusErr.message);
+  }
+
   try {
     const parsed = whatsapp.parseWebhookMessage(req.body);
     if (!parsed) return;
