@@ -7,19 +7,25 @@ const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const BASE_URL = `https://graph.facebook.com/${API_VERSION}/${PHONE_NUMBER_ID}/messages`;
 const headers = { Authorization: `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' };
 
+// Log config at startup for debugging
+logger.info('WhatsApp service initialized', { API_VERSION, PHONE_NUMBER_ID, hasToken: !!ACCESS_TOKEN });
+
 async function sendText(to, text) {
+  logger.info('WhatsApp sendText CALLED', { to, textLength: text?.length });
   try {
     const res = await axios.post(BASE_URL, {
       messaging_product: 'whatsapp', to, type: 'text', text: { body: text },
-    }, { headers });
+    }, { headers, timeout: 15000 });
+    logger.info('WhatsApp sendText SUCCESS', { to, status: res.status });
     return res.data;
   } catch (err) {
-    logger.error('Erreur envoi WhatsApp texte', { to, error: err.response?.data || err.message });
+    logger.error('WhatsApp sendText FAILED', { to, code: err.code, status: err.response?.status, error: err.response?.data || err.message });
     throw err;
   }
 }
 
 async function sendButtons(to, bodyText, buttons, headerText, footerText) {
+  logger.info('WhatsApp sendButtons CALLED', { to, bodyTextLength: bodyText?.length, buttonCount: buttons?.length });
   const interactive = {
     type: 'button',
     body: { text: bodyText },
@@ -35,15 +41,17 @@ async function sendButtons(to, bodyText, buttons, headerText, footerText) {
   try {
     const res = await axios.post(BASE_URL, {
       messaging_product: 'whatsapp', to, type: 'interactive', interactive,
-    }, { headers });
+    }, { headers, timeout: 15000 });
+    logger.info('WhatsApp sendButtons SUCCESS', { to, status: res.status });
     return res.data;
   } catch (err) {
-    logger.error('Erreur envoi WhatsApp boutons', { to, error: err.response?.data || err.message });
+    logger.error('WhatsApp sendButtons FAILED', { to, code: err.code, status: err.response?.status, error: err.response?.data || err.message });
     throw err;
   }
 }
 
 async function sendList(to, bodyText, buttonLabel, sections, headerText) {
+  logger.info('WhatsApp sendList CALLED', { to, bodyTextLength: bodyText?.length });
   const interactive = {
     type: 'list',
     body: { text: bodyText },
@@ -61,18 +69,19 @@ async function sendList(to, bodyText, buttonLabel, sections, headerText) {
   try {
     const res = await axios.post(BASE_URL, {
       messaging_product: 'whatsapp', to, type: 'interactive', interactive,
-    }, { headers });
+    }, { headers, timeout: 15000 });
+    logger.info('WhatsApp sendList SUCCESS', { to, status: res.status });
     return res.data;
   } catch (err) {
-    logger.error('Erreur envoi WhatsApp liste', { to, error: err.response?.data || err.message });
+    logger.error('WhatsApp sendList FAILED', { to, code: err.code, status: err.response?.status, error: err.response?.data || err.message });
     throw err;
   }
 }
 
 async function markAsRead(messageId) {
   try {
-    await axios.post(BASE_URL, { messaging_product: 'whatsapp', status: 'read', message_id: messageId }, { headers });
-  } catch (err) { logger.debug('Erreur markAsRead', err.message); }
+    await axios.post(BASE_URL, { messaging_product: 'whatsapp', status: 'read', message_id: messageId }, { headers, timeout: 10000 });
+  } catch (err) { logger.info('Erreur markAsRead', { error: err.message, code: err.code }); }
 }
 
 function parseWebhookMessage(body) {
