@@ -14,28 +14,37 @@ async function handleOnboarding(user, parsed) {
 
   // Step 0: Welcome + ask level
   if (step === 0) {
-    const greeting = name ? ('Salut ' + name + ' ! 👋') : 'Salut ! 👋';
-    await whatsapp.sendText(
-      user.whatsapp_id,
-      greeting + '\n\n' +
-      "Moi c'est Will, ton coach perso spécialisé en IA 🤖\n\n" +
-      "Mon job : t'aider à maîtriser l'IA au quotidien, que ce soit pour ton travail, tes projets ou ta curiosité.\n\n" +
-      "Avant de démarrer, je vais te poser quelques questions rapides pour personnaliser ton expérience ⚡ (30 secondes)."
-    );
-    await delay(2000);
-    await whatsapp.sendButtons(
-      user.whatsapp_id,
-      "Quel est ton niveau actuel en intelligence artificielle ?",
-      [
-        { id: 'ob_level_debutant', title: 'Débutant' },
-        { id: 'ob_level_intermediaire', title: 'Intermédiaire' },
-        { id: 'ob_level_avance', title: 'Avancé' },
-      ],
-      null,
-      "Pas de mauvaise réponse 😉"
-    );
-    await updateProfile(user.id, { onboarding_step: 1 });
-    return true;
+    try {
+      const greeting = name ? ('Salut ' + name + ' ! 👋') : 'Salut ! 👋';
+      logger.info('Onboarding step 0: sending greeting', { userId: user.id, whatsappId: user.whatsapp_id });
+      await whatsapp.sendText(
+        user.whatsapp_id,
+        greeting + '\n\n' +
+        "Moi c'est Will, ton coach perso spécialisé en IA 🤖\n\n" +
+        "Mon job : t'aider à maîtriser l'IA au quotidien, que ce soit pour ton travail, tes projets ou ta curiosité.\n\n" +
+        "Avant de démarrer, je vais te poser quelques questions rapides pour personnaliser ton expérience ⚡ (30 secondes)."
+      );
+      logger.info('Onboarding step 0: greeting sent, sending buttons', { userId: user.id });
+      await delay(2000);
+      await whatsapp.sendButtons(
+        user.whatsapp_id,
+        "Quel est ton niveau actuel en intelligence artificielle ?",
+        [
+          { id: 'ob_level_debutant', title: 'Débutant' },
+          { id: 'ob_level_intermediaire', title: 'Intermédiaire' },
+          { id: 'ob_level_avance', title: 'Avancé' },
+        ],
+        null,
+        "Pas de mauvaise réponse 😉"
+      );
+      logger.info('Onboarding step 0: buttons sent, updating profile', { userId: user.id });
+      await updateProfile(user.id, { onboarding_step: 1 });
+      logger.info('Onboarding step 0: complete', { userId: user.id });
+      return true;
+    } catch (err) {
+      logger.error('Onboarding step 0 FAILED', { userId: user.id, error: err.message, stack: err.stack?.substring(0, 300), response: err.response?.data });
+      throw err;
+    }
   }
 
   // Step 1: Got level - ask job
