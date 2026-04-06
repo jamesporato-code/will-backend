@@ -109,7 +109,7 @@ async function handleOnboarding(user, parsed) {
     return true;
   }
 
-  // Step 3: Got goal - ask preferred daily message hour
+  // Step 3: Got goal - ask explicit opt-in consent for daily messages
   if (step === 3 && parsed.buttonId?.startsWith('ob_goal_')) {
     const goalMap = {
       ob_goal_productivite: 'Gagner en productivité',
@@ -119,14 +119,71 @@ async function handleOnboarding(user, parsed) {
     const interests = goalMap[parsed.buttonId] || "Explorer l'IA";
     await updateProfile(user.id, { interests, onboarding_step: 4 });
 
-    await whatsapp.sendText(user.whatsapp_id, "Parfait ! Chaque jour je t'envoie un message personnalisé sur l'IA 📬");
-    await delay(1000);
+    await whatsapp.sendText(
+      user.whatsapp_id,
+      "Super, merci pour tes réponses ! 🙌\n\n" +
+      "Pour t'accompagner au mieux, j'aimerais t'envoyer *un message personnalisé chaque jour* sur l'IA, adapté à ton profil et tes objectifs.\n\n" +
+      "📋 En acceptant, tu consens à :\n" +
+      "• Recevoir un message quotidien de Will sur WhatsApp\n" +
+      "• Le traitement de tes données (profil, préférences) pour personnaliser le contenu\n\n" +
+      "Tu peux te désinscrire à tout moment en tapant /stop.\n\n" +
+      "🔒 Politique de confidentialité : https://will-coach-ia.netlify.app/privacy"
+    );
+    await delay(2000);
+    await whatsapp.sendButtons(
+      user.whatsapp_id,
+      "Acceptes-tu de recevoir un message quotidien de Will ? 📬",
+      [
+        { id: 'ob_consent_yes', title: "J'accepte ✅" },
+        { id: 'ob_consent_no', title: 'Non merci ❌' },
+      ],
+      null,
+      "Tu pourras changer d'avis à tout moment"
+    );
+    return true;
+  }
 
-    // Mention that user can type the time
+  // Step 4: Got consent response - ask preferred daily message hour or skip
+  if (step === 4 && parsed.buttonId?.startsWith('ob_consent_')) {
+    if (parsed.buttonId === 'ob_consent_no') {
+      await updateProfile(user.id, { daily_opt_in: false, onboarding_step: 6 });
+      await whatsapp.sendText(
+        user.whatsapp_id,
+        "Pas de souci ! 👍 Tu ne recevras pas de messages quotidiens.\n\n" +
+        "Tu pourras toujours me poser tes questions sur l'IA quand tu veux !\n\n" +
+        "Si tu changes d'avis, tape /daily pour activer les messages quotidiens."
+      );
+      await delay(1500);
+      const recap = "Ton profil Will est prêt ! ✅\n\n" +
+        "📊 Niveau : " + (user.level || 'débutant') + "\n" +
+        "💼 Domaine : " + (user.job || 'Non précisé') + "\n" +
+        "🎯 Objectif : " + (user.interests || "Explorer l'IA") + "\n" +
+        "📬 Messages quotidiens : désactivés\n\n" +
+        "Je vais personnaliser tous mes conseils en fonction de ça 💪";
+      await whatsapp.sendText(user.whatsapp_id, recap);
+      await delay(2000);
+      await whatsapp.sendButtons(
+        user.whatsapp_id,
+        "Dernière étape : choisis comment tu veux utiliser Will 👇\n\n" +
+        "🆕 Essai gratuit — 7 jours, 5 msg/jour\n" +
+        "🎓 Étudiant — 4,99€/mois, 40 msg/jour\n" +
+        "🚀 Pro — 7,99€/mois, illimité + priorité",
+        [
+          { id: 'ob_plan_trial', title: 'Essai gratuit 7j' },
+          { id: 'ob_plan_etudiant', title: 'Étudiant 4,99€' },
+          { id: 'ob_plan_pro', title: 'Pro 7,99€' },
+        ],
+        null,
+        'Tu pourras changer à tout moment'
+      );
+      return true;
+    }
+    // User accepted daily messages
+    await updateProfile(user.id, { daily_opt_in: true, onboarding_step: 5 });
+    await whatsapp.sendText(user.whatsapp_id, "Merci ! 🎉 Tu recevras ton message quotidien personnalisé sur l'IA.");
+    await delay(1000);
     await whatsapp.sendText(user.whatsapp_id, "Tu peux aussi écrire directement l'heure que tu préfères (ex : 8h30, 14h00) ✍️");
     await delay(1000);
-
-    // Expanded 2-section list with more time options
     await whatsapp.sendList(
       user.whatsapp_id,
       "À quelle heure tu veux recevoir ton message quotidien ? ⏰",
@@ -147,11 +204,11 @@ async function handleOnboarding(user, parsed) {
         {
           title: "Après-midi / Soir 🌙",
           rows: [
-            { id: 'ob_hour_13', title: '13h00', description: 'Début d\'après-midi' },
-            { id: 'ob_hour_14', title: '14h00', description: 'Milieu d\'après-midi' },
-            { id: 'ob_hour_15', title: '15h00', description: 'Milieu d\'après-midi' },
-            { id: 'ob_hour_16', title: '16h00', description: 'Fin d\'après-midi' },
-            { id: 'ob_hour_17', title: '17h00', description: 'Fin d\'après-midi' },
+            { id: 'ob_hour_13', title: '13h00', description: "Début d'après-midi" },
+            { id: 'ob_hour_14', title: '14h00', description: "Milieu d'après-midi" },
+            { id: 'ob_hour_15', title: '15h00', description: "Milieu d'après-midi" },
+            { id: 'ob_hour_16', title: '16h00', description: "Fin d'après-midi" },
+            { id: 'ob_hour_17', title: '17h00', description: "Fin d'après-midi" },
             { id: 'ob_hour_18', title: '18h00', description: 'Fin de journée' },
             { id: 'ob_hour_19', title: '19h00', description: 'Soirée' },
             { id: 'ob_hour_20', title: '20h00', description: 'En soirée 🌙' },
@@ -164,85 +221,26 @@ async function handleOnboarding(user, parsed) {
     return true;
   }
 
-  // Step 4: Got preferred hour - recap + plan choice
-  if (step === 4) {
+  // Step 5: Got preferred hour - recap + plan choice
+  if (step === 5) {
     let hour = null;
-
-    // Handle list selection
     if (parsed.listId?.startsWith('ob_hour_')) {
       hour = parseInt(parsed.listId.replace('ob_hour_', ''), 10);
-    }
-    // Handle text input for hour (e.g., "8h", "8h30", "08:30", "14h00", "9", etc.)
-    else if (parsed.text) {
+    } else if (parsed.text) {
       const text = parsed.text.trim().toLowerCase();
-      // Try to parse various time formats
       let match;
-      // Format: "8h30", "14h00", "8h"
-      match = text.match(/^(\d{1,2})\s*h\s*(\d{0,2})$/);
-      if (!match) {
-        // Format: "08:30", "14:00"
-        match = text.match(/^(\d{1,2})\s*:\s*(\d{0,2})$/);
-      }
-      if (!match) {
-        // Just a number: "8", "14", "20"
-        match = text.match(/^(\d{1,2})$/);
-        if (match) match[2] = '0';
-      }
-      if (match) {
-        const h = parseInt(match[1], 10);
-        if (h >= 0 && h <= 23) {
-          hour = h;
-        }
-      }
+      match = text.match(/^(\\d{1,2})\\s*h\\s*(\\d{0,2})$/);
+      if (!match) match = text.match(/^(\\d{1,2})\\s*:\\s*(\\d{0,2})$/);
+      if (!match) { match = text.match(/^(\\d{1,2})$/); if (match) match[2] = '0'; }
+      if (match) { const h = parseInt(match[1], 10); if (h >= 0 && h <= 23) hour = h; }
     }
-
     if (hour === null) {
-      // Invalid input at step 4
-      await whatsapp.sendText(
-        user.whatsapp_id,
-        "Hmm, je n'ai pas compris l'heure 🤔\n\nÉcris-la au format 8h30, 14h00, ou choisis dans la liste ci-dessous 👇"
-      );
+      await whatsapp.sendText(user.whatsapp_id, "Hmm, je n'ai pas compris l'heure 🤔\n\nÉcris-la au format 8h30, 14h00, ou choisis dans la liste ci-dessous 👇");
       await delay(500);
-      await whatsapp.sendList(
-        user.whatsapp_id,
-        "À quelle heure tu veux recevoir ton message quotidien ? ⏰",
-        "Choisir mon heure",
-        [
-          {
-            title: "Matin ☀️",
-            rows: [
-              { id: 'ob_hour_6', title: '6h00', description: 'Très tôt le matin' },
-              { id: 'ob_hour_7', title: '7h00', description: 'Tôt le matin 🌅' },
-              { id: 'ob_hour_8', title: '8h00', description: 'Début de journée' },
-              { id: 'ob_hour_9', title: '9h00', description: 'En arrivant au travail' },
-              { id: 'ob_hour_10', title: '10h00', description: 'Milieu de matinée' },
-              { id: 'ob_hour_11', title: '11h00', description: 'Fin de matinée' },
-              { id: 'ob_hour_12', title: '12h00', description: 'Pause déjeuner 🍲' },
-            ]
-          },
-          {
-            title: "Après-midi / Soir 🌙",
-            rows: [
-              { id: 'ob_hour_13', title: '13h00', description: 'Début d\'après-midi' },
-              { id: 'ob_hour_14', title: '14h00', description: 'Milieu d\'après-midi' },
-              { id: 'ob_hour_15', title: '15h00', description: 'Milieu d\'après-midi' },
-              { id: 'ob_hour_16', title: '16h00', description: 'Fin d\'après-midi' },
-              { id: 'ob_hour_17', title: '17h00', description: 'Fin d\'après-midi' },
-              { id: 'ob_hour_18', title: '18h00', description: 'Fin de journée' },
-              { id: 'ob_hour_19', title: '19h00', description: 'Soirée' },
-              { id: 'ob_hour_20', title: '20h00', description: 'En soirée 🌙' },
-              { id: 'ob_hour_21', title: '21h00', description: 'Tard le soir' },
-              { id: 'ob_hour_22', title: '22h00', description: 'Très tard le soir' },
-            ]
-          }
-        ]
-      );
+      await whatsapp.sendList(user.whatsapp_id, "À quelle heure tu veux recevoir ton message quotidien ? ⏰", "Choisir mon heure", [{title:"Matin ☀️",rows:[{id:'ob_hour_7',title:'7h00',description:'Tôt le matin'},{id:'ob_hour_8',title:'8h00',description:'Début de journée'},{id:'ob_hour_9',title:'9h00',description:'En arrivant au travail'},{id:'ob_hour_10',title:'10h00',description:'Milieu de matinée'},{id:'ob_hour_12',title:'12h00',description:'Pause déjeuner'}]},{title:"Soir 🌙",rows:[{id:'ob_hour_14',title:'14h00',description:"Après-midi"},{id:'ob_hour_18',title:'18h00',description:'Fin de journée'},{id:'ob_hour_20',title:'20h00',description:'Soirée'},{id:'ob_hour_22',title:'22h00',description:'Tard le soir'}]}]);
       return true;
     }
-
-    // Valid hour - continue with recap
-    await updateProfile(user.id, { preferred_hour: hour, onboarding_step: 5 });
-
+    await updateProfile(user.id, { preferred_hour: hour, onboarding_step: 6 });
     const hourDisplay = hour + 'h00';
     const recap = "Ton profil Will est prêt ! ✅\n\n" +
       "📊 Niveau : " + (user.level || 'débutant') + "\n" +
@@ -269,8 +267,8 @@ async function handleOnboarding(user, parsed) {
     return true;
   }
 
-  // Step 5: Got plan choice - complete
-  if (step === 5 && parsed.buttonId?.startsWith('ob_plan_')) {
+  // Step 6: Got plan choice - complete
+  if (step === 6 && parsed.buttonId?.startsWith('ob_plan_')) {
     const planMap = {
       ob_plan_trial: { name: 'trial', price: 0 },
       ob_plan_etudiant: { name: 'student', price: 4.99 },
@@ -278,26 +276,23 @@ async function handleOnboarding(user, parsed) {
     };
     const plan = planMap[parsed.buttonId];
     if (!plan) return false;
-
     if (plan.price === 0) {
-      // Trial plan - no payment needed
-      await updateProfile(user.id, { plan: plan.name, onboarding_step: 6, onboarding_complete: true });
+      await updateProfile(user.id, { plan: plan.name, onboarding_step: 7, onboarding_complete: true });
       await whatsapp.sendText(
         user.whatsapp_id,
         "C'est parti ! 🎉\n\n" +
         "Tu commences avec l'essai gratuit (7 jours, 5 messages/jour).\n\n" +
-        "Demain tu recevras ton premier message personnalisé ✉️\n\n" +
-        "Des questions ? Tape /help pour voir tous mes commandes 🚀"
+        (user.daily_opt_in !== false ? "Demain tu recevras ton premier message personnalisé ✉️\n\n" : "") +
+        "Des questions ? Tape /help pour voir toutes mes commandes 🚀"
       );
       return true;
     } else {
-      // Paid plan - create Stripe checkout
       const checkoutUrl = await createCheckoutUrl(user.id, plan.name, plan.price);
       if (!checkoutUrl) {
         await whatsapp.sendText(user.whatsapp_id, "Oups, problème lors de la création du paiement. Réessaye plus tard 😔");
         return false;
       }
-      await updateProfile(user.id, { plan: plan.name, onboarding_step: 6, onboarding_complete: true });
+      await updateProfile(user.id, { plan: plan.name, onboarding_step: 7, onboarding_complete: true });
       await whatsapp.sendText(
         user.whatsapp_id,
         "Voici ton lien de paiement 👇\n\n" + checkoutUrl + "\n\n🔒 Paiement sécurisé par Stripe. Sans engagement."
@@ -309,14 +304,8 @@ async function handleOnboarding(user, parsed) {
   // Text during onboarding fallback
   if (parsed.text && !parsed.buttonId && !parsed.listId) {
     logger.warn('Text input during onboarding', { userId: user.id, step });
-
-    // Step 4 is handled above with text parsing
-    // For other steps, prompt user to use buttons/lists
-    if (step !== 4) {
-      await whatsapp.sendText(
-        user.whatsapp_id,
-        "Utilise les boutons ou la liste pour continuer 👆"
-      );
+    if (step !== 5) {
+      await whatsapp.sendText(user.whatsapp_id, "Utilise les boutons ou la liste pour continuer 👆");
       return true;
     }
   }
@@ -328,21 +317,7 @@ async function createCheckoutUrl(userId, planName, price) {
   try {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: 'eur',
-            product_data: {
-              name: 'Will - Plan ' + planName,
-            },
-            unit_amount: Math.round(price * 100),
-            recurring: {
-              interval: 'month',
-            }
-          },
-          quantity: 1,
-        }
-      ],
+      line_items: [{ price_data: { currency: 'eur', product_data: { name: 'Will - Plan ' + planName }, unit_amount: Math.round(price * 100), recurring: { interval: 'month' } }, quantity: 1 }],
       mode: 'subscription',
       success_url: 'https://your-domain.com/onboarding/success?session_id={CHECKOUT_SESSION_ID}',
       cancel_url: 'https://your-domain.com/onboarding/cancel',
@@ -355,7 +330,4 @@ async function createCheckoutUrl(userId, planName, price) {
   }
 }
 
-module.exports = {
-  handleOnboarding,
-  createCheckoutUrl,
-};
+module.exports = { handleOnboarding, createCheckoutUrl };
