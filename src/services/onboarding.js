@@ -272,7 +272,7 @@ async function handleOnboarding(user, parsed) {
 
     if (plan.price === 0) {
       // Trial plan - no payment needed
-      await updateProfile(user.id, { plan: plan.name, onboarding_step: 6 });
+      await updateProfile(user.id, { plan: plan.name, onboarding_step: 6, onboarding_complete: true });
       await whatsapp.sendText(
         user.whatsapp_id,
         "C'est parti ! 🎉\n\n" +
@@ -288,14 +288,10 @@ async function handleOnboarding(user, parsed) {
         await whatsapp.sendText(user.whatsapp_id, "Oups, problème lors de la création du paiement. Réessaye plus tard 😔");
         return false;
       }
-      await updateProfile(user.id, { plan: plan.name, onboarding_step: 6 });
-      await whatsapp.sendButtons(
+      await updateProfile(user.id, { plan: plan.name, onboarding_step: 6, onboarding_complete: true });
+      await whatsapp.sendText(
         user.whatsapp_id,
-        "Clique sur le lien ci-dessous pour valider ton abonnement 👇",
-        [
-          { id: 'stripe_link', title: 'Valider l\'abonnement', url: checkoutUrl }
-        ],
-        "Tu seras redirigé vers Stripe (sécurisé) ✅"
+        "Voici ton lien de paiement 👇\n\n" + checkoutUrl + "\n\n🔒 Paiement sécurisé par Stripe. Sans engagement."
       );
       return true;
     }
