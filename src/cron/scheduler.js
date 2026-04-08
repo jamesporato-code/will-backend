@@ -2,27 +2,28 @@ const cron = require('node-cron');
 const logger = require('../utils/logger');
 const { query } = require('../db/pool');
 const whatsapp = require('../services/whatsapp');
+const claude = require('../services/claude');
+const { cacheResponse, getCachedResponse } = require('../services/redis');
 
 function startDailyCron() {
-  // Toutes les heures, on envoie aux utilisateurs dont l'heure pr\u00e9f\u00e9r\u00e9e correspond
+  // Toutes les heures, on envoie aux utilisateurs dont l'heure préférée correspond
   cron.schedule('0 * * * *', async () => {
     const now = new Date();
     const parisHour = parseInt(now.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', hour12: false }), 10);
-    logger.info('Cron horaire : v\u00e9rification pour ' + parisHour + 'h');
+    logger.info('Cron horaire : vérification pour ' + parisHour + 'h');
     await sendDailyMessages(parisHour);
   }, { timezone: 'Europe/Paris' });
 
-  logger.info('Cron planifi\u00e9 : v\u00e9rification horaire des messages quotidiens');
+  logger.info('Cron planifié : vérification horaire des messages quotidiens');
 }
 
 async function sendDailyMessages(currentHour) {
   try {
-    const dayOfWeek = new Date().getDay(); // 0 = Dimanche, 1 = Lundi, ... 6 = Samedi
-
     const usersResult = await query(
-      `SELECT id, whatsapp_id, level, display_name, plan, preferred_hour
+      `SELECT id, whatsapp_id, level, display_name, job, plan, preferred_hour
        FROM users
        WHERE onboarding_complete = true
+         AND daily_opt_in IS NOT false
          AND plan != 'cancelled'
          AND (plan != 'trial' OR trial_ends_at > NOW())
          AND COALESCE(preferred_hour, 8) = $1`,
@@ -34,32 +35,43 @@ async function sendDailyMessages(currentHour) {
 
     for (const user of users) {
       try {
-        const contentResult = await query(
-          'SELECT * FROM daily_content WHERE day_of_week = $1 AND level = $2 AND published_at = CURRENT_DATE LIMIT 1',
-          [dayOfWeek, user.level]
-        );
-
         const name = user.display_name?.split(' ')[0] || '';
 
-        if (contentResult.rows.length > 0) {
-          const content = contentResult.rows[0];
-          const greeting = 'Bonjour ' + name + ' ! \u{1F44B}\n\n';
+        // G\u00e9n\u00e9rer le contenu quotidien via Claude
+        const dailyContent = await claude.generateDailyContent({
+          displayName: name,
+          level: user.level || 'd\u00e9butant',
+          job: user.job || '',
+        });
 
-          if (content.buttons) {
-            const buttons = typeof content.buttons === 'string'
-              ? JSON.parse(content.buttons)
-              : content.buttons;
-            await whatsapp.sendButtons(user.whatsapp_id, greeting + content.body, buttons, content.title);
-          } else {
-            await whatsapp.sendText(user.whatsapp_id, greeting + content.body);
-          }
+        if (!dailyContent) {
+          // Fallback si Claude fail
+          await whatsapp.sendText(
+            user.whatsapp_id,
+            'Bonjour ' + name + ' ! \ud83d\udc4b\n\nUne question IA pour toi : as-tu essay\u00e9 un nouvel outil IA cette semaine ?\n\nR\u00e9ponds-moi, je suis curieux ! \ud83e\udd14'
+          );
         } else {
-          await whatsapp.sendText(user.whatsapp_id,
-            'Bonjour ' + name + ' ! \u{1F44B}\n\nUne question IA pour toi : as-tu essay\u00e9 un nouvel outil IA cette semaine ?\n\nR\u00e9ponds-moi, je suis curieux ! \u{1F914}'
+          const greeting = 'Bonjour ' + name + ' ! \ud83d\udc4b\n\n';
+
+          // Stocker le contenu dans Redis pour les boutons de suivi (TTL 24h)
+          await cacheResponse('daily:' + user.id, dailyContent, 86400);
+
+          // Envoyer avec boutons interactifs
+          await whatsapp.sendButtons(
+            user.whatsapp_id,
+            greeting + dailyContent,
+            [
+              { id: 'daily_deep', title: "J'approfondis \ud83d\udd0d" },
+              { id: 'daily_example', title: 'Exemple concret \ud83d\udcbc' },
+              { id: 'daily_next', title: 'Notion suivante \u27a1\ufe0f' },
+            ],
+            null,
+            'Ton daily IA personnalis\u00e9'
           );
         }
 
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // Pause entre les envois pour respecter les rate limits
+        await new Promise(resolve => setTimeout(resolve, 500));
       } catch (err) {
         logger.error('Erreur envoi quotidien \u00e0 ' + user.whatsapp_id, err.message);
       }
@@ -72,4 +84,3 @@ async function sendDailyMessages(currentHour) {
 }
 
 module.exports = { startDailyCron, sendDailyMessages };
-
