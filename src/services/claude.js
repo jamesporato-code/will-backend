@@ -428,4 +428,4 @@ async function generateDailyFollowup(buttonType, dailyContent, userContext = {})
   }
 }
 
-module.exports = { generateResponse, generateDailyContent, generateDailyFollowup };\n
+module.exports = { generateResponse, generateDailyContent, generateDailyFollowup };
