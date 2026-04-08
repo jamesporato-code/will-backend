@@ -303,4 +303,43 @@ router.get('/user/:id', adminAuth, async (req, res) => {
   }
 });
 
+// ============================================
+// POST /api/admin/reset-user/:id - Reset user onboarding
+// ============================================
+router.post('/reset-user/:id', adminAuth, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const user = await query('SELECT id, display_name, whatsapp_id FROM users WHERE id = $1', [userId]);
+
+    if (user.rows.length === 0) {
+      return res.status(404).json({ error: 'Utilisateur non trouv\u00e9' });
+    }
+
+    // Reset onboarding fields
+    await query(`
+      UPDATE users SET
+        onboarding_step = 0,
+        onboarding_complete = false,
+        level = NULL,
+        job = NULL,
+        interests = NULL,
+        daily_opt_in = NULL,
+        preferred_hour = NULL,
+        daily_message_count = 0
+      WHERE id = $1
+    `, [userId]);
+
+    logger.info('User reset by admin', { userId, name: user.rows[0].display_name });
+
+    res.json({
+      success: true,
+      message: 'Utilisateur r\u00e9initialis\u00e9',
+      user: user.rows[0],
+    });
+  } catch (err) {
+    logger.error('Admin reset user error', { error: err.message });
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 module.exports = router;
