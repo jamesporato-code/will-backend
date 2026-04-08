@@ -324,7 +324,7 @@ function buildContextLine(ctx) {
 function stripMarkdown(text) {
   return text
     // Supprimer les headers markdown (## titre, ### titre, etc.)
-    .replace(/^#z1,6}\s+/gm, '')
+    .replace(/^#{1,6}\s+/gm, '')
     // Supprimer le gras **texte** et __texte__
     .replace(/\*\*(.+?)\*\*/g, '$1')
     .replace(/__(.+?)__/g, '$1')
