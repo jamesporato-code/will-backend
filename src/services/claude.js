@@ -346,5 +346,86 @@ function stripMarkdown(text) {
     .trim();
 }
 
-module.exports = { generateResponse };
 
+/**
+ * Générer le contenu quotidien structuré (Actu + Notion) pour un utilisateur
+ */
+async function generateDailyContent(userContext = {}) {
+  try {
+    let actuIA = '';
+    if (process.env.TAVILY_API_KEY) {
+      actuIA = await webSearch('latest AI news today artificial intelligence');
+    }
+
+    const dailyPrompt = "Tu es Will, coach IA sur WhatsApp. Génère le MESSAGE QUOTIDIEN du jour.\n\n" +
+      "PROFIL UTILISATEUR :\n" +
+      (userContext.displayName ? "- Prénom : " + userContext.displayName + "\n" : "") +
+      "- Niveau IA : " + (userContext.level || "débutant") + "\n" +
+      (userContext.job ? "- Métier : " + userContext.job + "\n" : "") +
+      "\n" +
+      (actuIA ? "ACTUALITÉS IA DU JOUR (source web) :\n" + actuIA + "\n\n" : "") +
+      "CONSIGNES STRICTES :\n" +
+      "1. Écris UNE actu IA du jour (2-3 phrases max)\n" +
+      "2. Écris UNE notion/astuce IA du jour adaptée au niveau et métier\n" +
+      "3. ZERO formatage markdown. Texte brut uniquement.\n" +
+      "4. 2-3 emojis maximum\n" +
+      "5. 80 à 150 mots total\n" +
+      "6. Français, ton WhatsApp naturel (tutoiement)\n" +
+      "7. Pas de titre ni salutation. Commence directement.";
+
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      temperature: 0.7,
+      system: 'Tu es un expert IA qui rédige des messages quotidiens courts et percutants pour WhatsApp. Pas de formatage markdown.',
+      messages: [{ role: 'user', content: dailyPrompt }],
+    });
+
+    const textBlock = response.content.find(b => b.type === 'text');
+    let content = textBlock ? textBlock.text : null;
+    if (content) content = stripMarkdown(content);
+
+    logger.debug('Daily content generated', {
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+    });
+
+    return content;
+  } catch (err) {
+    logger.error('Erreur génération contenu quotidien', { error: err.message });
+    return null;
+  }
+}
+
+/**
+ * Générer une réponse de suivi quand l'utilisateur clique un bouton du daily
+ */
+async function generateDailyFollowup(buttonType, dailyContent, userContext = {}) {
+  try {
+    const prompts = {
+      deep: "L'utilisateur a reçu ce message quotidien :\n\"" + (dailyContent || '').replace(/"/g, '\\"').substring(0, 500) + "\"\n\nIl a cliqué \"J'approfondis\". Génère une explication plus détaillée. 100-200 mots, concret, adapté au niveau " + (userContext.level || 'débutant') + " et métier " + (userContext.job || 'général') + ". Texte brut WhatsApp, 2-3 emojis max.",
+      example: "L'utilisateur a reçu ce message quotidien :\n\"" + (dailyContent || '').replace(/"/g, '\\"').substring(0, 500) + "\"\n\nIl a cliqué \"Exemple concret\". Donne un exemple pratique lié au métier " + (userContext.job || 'général') + ". 80-150 mots, prompt à copier-coller si pertinent. Texte brut WhatsApp, 2-3 emojis max.",
+      next: "L'utilisateur a reçu ce message quotidien :\n\"" + (dailyContent || '').replace(/"/g, '\\"').substring(0, 500) + "\"\n\nIl a cliqué \"Notion suivante\". Génère une NOUVELLE notion/astuce IA différente. 80-150 mots, adapté au niveau " + (userContext.level || 'débutant') + " et métier " + (userContext.job || 'général') + ". Texte brut WhatsApp, 2-3 emojis max."
+    };
+
+    const prompt = prompts[buttonType] || prompts.deep;
+
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      temperature: 0.6,
+      system: "Tu es Will, coach IA sur WhatsApp. Réponds en français, texte brut uniquement, ton naturel et expert.",
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const textBlock = response.content.find(b => b.type === 'text');
+    let content = textBlock ? textBlock.text : "Oups, petit bug ! Réessaie dans quelques secondes \ud83d\ude05";
+    content = stripMarkdown(content);
+    return content;
+  } catch (err) {
+    logger.error('Erreur génération daily followup', { error: err.message });
+    return "Oups, petit bug ! Réessaie dans quelques secondes \ud83d\ude05";
+  }
+}
+
+module.exports = { generateResponse, generateDailyContent, generateDailyFollowup };\n
