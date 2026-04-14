@@ -414,6 +414,9 @@ router.post('/migrate', adminAuth, async (req, res) => {
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS ia_interest TEXT",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS ia_interest_other TEXT",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS secondary_jobs JSONB DEFAULT '[]'::jsonb",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_reminder_sent BOOLEAN DEFAULT false",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_failed_at TIMESTAMP",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_grace_until TIMESTAMP",
     ];
     const results = [];
     for (const sql of statements) {
@@ -429,6 +432,71 @@ router.post('/migrate', adminAuth, async (req, res) => {
   } catch (err) {
     logger.error('Admin migrate error', { error: err.message });
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================
+// GET /api/admin/trials - Users en trial avec statut d'expiration
+// ============================================
+router.get('/trials', adminAuth, async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT id, display_name, whatsapp_id, created_at, trial_reminder_sent,
+             EXTRACT(DAY FROM (NOW() - created_at))::int as days_since_signup,
+             7 - EXTRACT(DAY FROM (NOW() - created_at))::int as days_remaining,
+             (SELECT COUNT(*) FROM messages WHERE user_id = users.id) as message_count
+      FROM users
+      WHERE plan = 'trial' AND onboarding_complete = true
+      ORDER BY created_at ASC
+    `);
+    const trials = result.rows.map(r => ({
+      ...r,
+      status: r.days_remaining <= 0 ? 'expired' :
+              r.days_remaining === 1 ? 'expires_tomorrow' :
+              r.days_remaining <= 3 ? 'expires_soon' : 'active'
+    }));
+    res.json({
+      total: trials.length,
+      trials,
+      summary: {
+        active: trials.filter(t => t.status === 'active').length,
+        expires_soon: trials.filter(t => t.status === 'expires_soon').length,
+        expires_tomorrow: trials.filter(t => t.status === 'expires_tomorrow').length,
+        expired: trials.filter(t => t.status === 'expired').length,
+      }
+    });
+  } catch (err) {
+    logger.error('Admin trials error', { error: err.message });
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ============================================
+// GET /api/admin/payment-issues - Paiements en echec + grace period
+// ============================================
+router.get('/payment-issues', adminAuth, async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT id, display_name, whatsapp_id, plan, payment_failed_at, payment_grace_until,
+             stripe_customer_id,
+             CASE
+               WHEN payment_grace_until > NOW() THEN 'in_grace_period'
+               WHEN payment_grace_until IS NOT NULL AND payment_grace_until < NOW() THEN 'grace_expired'
+               WHEN payment_failed_at IS NOT NULL THEN 'payment_failed'
+               ELSE 'ok'
+             END as status
+      FROM users
+      WHERE payment_failed_at IS NOT NULL OR plan = 'cancelled'
+      ORDER BY COALESCE(payment_failed_at, updated_at) DESC
+      LIMIT 100
+    `);
+    res.json({
+      total: result.rows.length,
+      users: result.rows,
+    });
+  } catch (err) {
+    logger.error('Admin payment-issues error', { error: err.message });
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
