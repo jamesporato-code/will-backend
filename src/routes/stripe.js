@@ -1,141 +1,146 @@
 const express = require('express');
 const router = express.Router();
 const Stripe = require('stripe');
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const logger = require('../utils/logger');
-const userService = require('../services/userService');
+const { findByStripeCustomerId, updateProfile } = require('../services/userService');
+const { query } = require('../db/pool');
 const whatsapp = require('../services/whatsapp');
 
-const PRICE_TO_PLAN = {
-  [process.env.STRIPE_PRICE_ETUDIANT]: 'etudiant',
-  [process.env.STRIPE_PRICE_PRO]: 'pro',
-};
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-// Stripe webhook
-router.post('/webhook', async (req, res) => {
+// Webhook Stripe : events subscription + invoice
+router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
   let event;
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    logger.error('Erreur signature webhook Stripe', err.message);
-    return res.status(400).send('Webhook Error');
-  }
 
-  logger.info('Stripe event recu', { type: event.type });
+  try {
+    if (webhookSecret) {
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } else {
+      event = JSON.parse(req.body.toString());
+      logger.warn('STRIPE_WEBHOOK_SECRET non configure, verification signature skip');
+    }
+  } catch (err) {
+    logger.error('Stripe webhook signature failed', { error: err.message });
+    return res.status(400).send('Webhook Error: ' + err.message);
+  }
 
   try {
     switch (event.type) {
-      case 'checkout.session.completed':
-        await handleCheckoutCompleted(event.data.object);
+      case 'checkout.session.completed': {
+        const session = event.data.object;
+        logger.info('Stripe checkout.session.completed', { customerId: session.customer, clientRefId: session.client_reference_id });
+        // Lie l'user au customer Stripe
+        if (session.client_reference_id && session.customer) {
+          await updateProfile(session.client_reference_id, { stripe_customer_id: session.customer });
+        }
         break;
-      case 'customer.subscription.deleted':
-        await handleSubscriptionCancelled(event.data.object);
+      }
+
+      case 'invoice.payment_succeeded': {
+        const invoice = event.data.object;
+        const customerId = invoice.customer;
+        logger.info('Stripe invoice.payment_succeeded', { customerId });
+        const user = await findByStripeCustomerId(customerId);
+        if (user) {
+          // Reset eventuel etat payment_failed
+          await query(
+            'UPDATE users SET payment_failed_at = NULL, payment_grace_until = NULL WHERE id = $1',
+            [user.id]
+          );
+          logger.info('Reset payment_failed state', { userId: user.id });
+        }
         break;
-      case 'customer.subscription.updated':
-        await handleSubscriptionUpdated(event.data.object);
+      }
+
+      case 'invoice.payment_failed': {
+        const invoice = event.data.object;
+        const customerId = invoice.customer;
+        logger.warn('Stripe invoice.payment_failed', { customerId });
+        const user = await findByStripeCustomerId(customerId);
+        if (user) {
+          // Set payment_failed_at + grace period de 3 jours
+          await query(
+            "UPDATE users SET payment_failed_at = NOW(), payment_grace_until = NOW() + INTERVAL '3 days' WHERE id = $1",
+            [user.id]
+          );
+          // Notification WhatsApp
+          try {
+            await whatsapp.sendText(
+              user.whatsapp_id,
+              '\u26a0\ufe0f *Ton paiement a \u00e9chou\u00e9*\n\n' +
+              'Pas de panique : tu as une p\u00e9riode de gr\u00e2ce de 3 jours pour mettre \u00e0 jour ta carte.\n\n' +
+              'Tape "mon compte" puis "G\u00e9rer mon abo" pour mettre \u00e0 jour ta carte \ud83d\udd11\n\n' +
+              'Apr\u00e8s 3 jours sans paiement, ton acc\u00e8s sera suspendu.'
+            );
+          } catch (waErr) {
+            logger.error('Erreur notif payment_failed', { userId: user.id, error: waErr.message });
+          }
+          logger.info('Payment failed processed', { userId: user.id });
+        }
         break;
-      case 'invoice.payment_failed':
-        await handlePaymentFailed(event.data.object);
+      }
+
+      case 'customer.subscription.deleted': {
+        const sub = event.data.object;
+        const customerId = sub.customer;
+        logger.info('Stripe customer.subscription.deleted', { customerId });
+        const user = await findByStripeCustomerId(customerId);
+        if (user) {
+          // Downgrade plan
+          await updateProfile(user.id, { plan: 'cancelled' });
+          // Clear payment_failed state
+          await query(
+            'UPDATE users SET payment_failed_at = NULL, payment_grace_until = NULL WHERE id = $1',
+            [user.id]
+          );
+          // Notification WhatsApp
+          try {
+            await whatsapp.sendText(
+              user.whatsapp_id,
+              '\ud83d\udc4b Ton abonnement a \u00e9t\u00e9 annul\u00e9.\n\n' +
+              'Tu n\'as plus acc\u00e8s aux messages Will. Merci d\'avoir test\u00e9 !\n\n' +
+              'Si tu veux revenir, tape "mon compte" et choisis un plan \ud83d\ude80'
+            );
+          } catch (waErr) {
+            logger.error('Erreur notif subscription.deleted', { userId: user.id, error: waErr.message });
+          }
+          logger.info('Subscription cancelled for user', { userId: user.id });
+        }
         break;
+      }
+
+      case 'customer.subscription.updated': {
+        const sub = event.data.object;
+        const customerId = sub.customer;
+        logger.info('Stripe customer.subscription.updated', { customerId, status: sub.status });
+        // On ignore pour l'instant sauf si cancel_at_period_end
+        const user = await findByStripeCustomerId(customerId);
+        if (user && sub.cancel_at_period_end) {
+          try {
+            await whatsapp.sendText(
+              user.whatsapp_id,
+              '\ud83d\udcec Ton abonnement sera annul\u00e9 \u00e0 la fin de la p\u00e9riode en cours.\n\n' +
+              'Tu gardes tous tes acc\u00e8s jusqu\'au ' +
+              new Date(sub.current_period_end * 1000).toLocaleDateString('fr-FR') + '.'
+            );
+          } catch (waErr) {
+            logger.error('Erreur notif subscription.updated', { userId: user.id, error: waErr.message });
+          }
+        }
+        break;
+      }
+
+      default:
+        logger.debug('Stripe event non trait\u00e9', { type: event.type });
     }
+
+    res.json({ received: true });
   } catch (err) {
-    logger.error('Erreur traitement event Stripe', err.message);
+    logger.error('Erreur traitement webhook Stripe', { type: event?.type, error: err.message });
+    res.status(500).json({ error: 'Erreur traitement webhook' });
   }
-
-  res.json({ received: true });
 });
-
-async function handleCheckoutCompleted(session) {
-  const { userId, whatsappId, plan } = session.metadata;
-  if (!userId || !plan) return;
-
-  await userService.updateProfile(parseInt(userId), {
-    plan: plan,
-    stripe_customer_id: session.customer,
-    stripe_subscription_id: session.subscription,
-  });
-
-  const planNames = { etudiant: 'Etudiant', pro: 'Pro' };
-
-  if (whatsappId) {
-    await whatsapp.sendText(
-      whatsappId,
-      'Paiement confirme ! Bienvenue sur le plan ' + (planNames[plan] || plan) + ' !\n\n' +
-      'Ton plan est maintenant actif. Tu peux me poser toutes tes questions sur l\'IA !\n\n' +
-      'Tape "mon compte" a tout moment pour gerer ton abonnement.'
-    );
-
-    await new Promise(r => setTimeout(r, 1500));
-
-    await whatsapp.sendButtons(
-      whatsappId,
-      "Pour commencer, qu'est-ce qui t'interesse le plus ?",
-      [
-        { id: 'topic_outils', title: 'Decouvrir des outils' },
-        { id: 'topic_prompt', title: 'Ecrire de bons prompts' },
-        { id: 'topic_actu', title: 'Actu IA du moment' },
-      ]
-    );
-  }
-
-  logger.info('Checkout complete', { userId, plan });
-}
-
-async function handleSubscriptionCancelled(subscription) {
-  const user = await userService.findByStripeCustomerId(subscription.customer);
-  if (!user) return;
-
-  await userService.updateProfile(user.id, { plan: 'cancelled' });
-
-  if (user.whatsapp_id) {
-    await whatsapp.sendButtons(
-      user.whatsapp_id,
-      "Ton abonnement a ete annule.\n\nTu peux te reabonner a tout moment !",
-      [
-        { id: 'plan_etudiant', title: 'Etudiant 4,99\u20ac' },
-        { id: 'plan_pro', title: 'Pro 7,99\u20ac' },
-      ],
-      null,
-      'Merci d\'avoir utilise Will'
-    );
-  }
-  logger.info('Subscription cancelled', { userId: user.id });
-}
-
-async function handleSubscriptionUpdated(subscription) {
-  const user = await userService.findByStripeCustomerId(subscription.customer);
-  if (!user) return;
-
-  const priceId = subscription.items?.data?.[0]?.price?.id;
-  const newPlan = PRICE_TO_PLAN[priceId];
-
-  if (newPlan && newPlan !== user.plan) {
-    await userService.updateProfile(user.id, { plan: newPlan });
-    if (user.whatsapp_id) {
-      const planNames = { etudiant: 'Etudiant', pro: 'Pro' };
-      await whatsapp.sendText(
-        user.whatsapp_id,
-        'Ton plan a ete mis a jour : ' + (planNames[newPlan] || newPlan) + ' ! Les changements sont actifs immediatement.'
-      );
-    }
-    logger.info('Plan mis a jour', { userId: user.id, newPlan });
-  }
-}
-
-async function handlePaymentFailed(invoice) {
-  const user = await userService.findByStripeCustomerId(invoice.customer);
-  if (!user) return;
-
-  if (user.whatsapp_id) {
-    await whatsapp.sendText(
-      user.whatsapp_id,
-      'Le paiement de ton abonnement Will a echoue.\n\n' +
-      'Verifie tes informations de paiement pour continuer a profiter de Will.\n\n' +
-      'Tape "mon compte" pour gerer ton abonnement.'
-    );
-  }
-  logger.info('Payment failed', { userId: user.id });
-}
 
 module.exports = router;
