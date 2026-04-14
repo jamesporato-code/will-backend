@@ -398,4 +398,35 @@ router.post('/trigger-daily/:id', adminAuth, async (req, res) => {
   }
 });
 
+// ============================================
+// POST /api/admin/migrate - Add streak + module columns
+// ============================================
+router.post('/migrate', adminAuth, async (req, res) => {
+  try {
+    const statements = [
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_count INTEGER DEFAULT 0",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_daily_activity DATE",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS current_module TEXT DEFAULT 'prompt-engineering'",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS module_day INTEGER DEFAULT 1",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_flow_step INTEGER DEFAULT 0",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_flow_date DATE",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_opt_in BOOLEAN DEFAULT true",
+    ];
+    const results = [];
+    for (const sql of statements) {
+      try {
+        await query(sql);
+        results.push({ sql, ok: true });
+      } catch (err) {
+        results.push({ sql, ok: false, error: err.message });
+      }
+    }
+    logger.info('DB migration run by admin', { results });
+    res.json({ success: true, results });
+  } catch (err) {
+    logger.error('Admin migrate error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
