@@ -4,6 +4,7 @@ const { query } = require('../db/pool');
 const whatsapp = require('../services/whatsapp');
 const claude = require('../services/claude');
 const { cacheResponse, getCachedResponse } = require('../services/redis');
+const userService = require('../services/userService');
 
 function startDailyCron() {
   // Toutes les heures, on envoie aux utilisateurs dont l'heure préférée correspond
@@ -70,6 +71,7 @@ async function sendDailyMessages(currentHour) {
         }
 
         // Pause entre les envois pour respecter les rate limits
+        await userService.incrementDailyCount(user.id);
         await new Promise(resolve => setTimeout(resolve, 500));
       } catch (err) {
         logger.error('Erreur envoi quotidien \u00e0 ' + user.whatsapp_id, err.message);
