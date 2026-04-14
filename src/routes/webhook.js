@@ -134,7 +134,7 @@ async function handleMyAccount(user) {
     pro: 'Pro',
     cancelled: 'Annul\u00e9'
   };
-  const limits = { trial: 5, freemium: 3, etudiant: 40, pro: 'Illimit\u00e9' };
+  const limits = { trial: 15, freemium: 8, etudiant: 40, pro: 'Illimit\u00e9' };
 
   const info = "\ud83d\udc64 Ton compte Will\n\n" +
     "\ud83d\udccb Plan : " + (planNames[user.plan] || user.plan) + "\n" +
@@ -232,6 +232,7 @@ async function handleDailyButton(user, buttonId) {
     const followup = await claude.generateDailyFollowup(buttonType, dailyContent, userContext);
 
     await userService.saveMessage(user.id, 'assistant', followup, 'daily');
+    await userService.incrementDailyCount(user.id);
     await whatsapp.sendText(user.whatsapp_id, followup);
 
     // Offer next actions (exclude the button already clicked)
