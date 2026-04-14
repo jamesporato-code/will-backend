@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 const whatsapp = require('../services/whatsapp');
 const claude = require('../services/claude');
 const userService = require('../services/userService');
+const { getUserStats } = require('../services/userService');
 const onboarding = require('../services/onboarding');
 const { getCachedResponse, cacheResponse } = require('../services/redis');
 const Stripe = require('stripe');
@@ -129,19 +130,24 @@ router.post('/', async (req, res) => {
 async function handleMyAccount(user) {
   const planNames = {
     trial: 'Essai gratuit (7j)',
-    freemium: 'Gratuit',
     etudiant: '\u00c9tudiant',
     pro: 'Pro',
     cancelled: 'Annul\u00e9'
   };
-  const limits = { trial: 15, freemium: 8, etudiant: 40, pro: 'Illimit\u00e9' };
+  const limits = { trial: 15, etudiant: 40, pro: 'Illimit\u00e9', cancelled: 0 };
 
-  const info = "\ud83d\udc64 Ton compte Will\n\n" +
+  const stats = await getUserStats(user.id);
+  const info = "\ud83d\udc64 *Ton compte Will*\n\n" +
     "\ud83d\udccb Plan : " + (planNames[user.plan] || user.plan) + "\n" +
     "\ud83d\udcca Niveau : " + (user.level || 'd\u00e9butant') + "\n" +
     "\ud83d\udcbc Domaine : " + (user.job || 'Non renseign\u00e9') + "\n" +
     "\ud83d\udcac Messages/jour : " + (limits[user.plan] || '?') + "\n" +
-    "\u2709\ufe0f Utilis\u00e9s aujourd'hui : " + (user.daily_message_count || 0);
+    "\u2709\ufe0f Utilis\u00e9s aujourd'hui : " + (user.daily_message_count || 0) + "\n\n" +
+    "\ud83d\udcc8 *Ton activit\u00e9*\n" +
+    "\u2022 " + stats.msgWeek + " messages cette semaine\n" +
+    "\u2022 " + stats.msgTotal + " messages au total\n" +
+    "\u2022 " + stats.activeDaysMonth + " jours actifs sur 30 jours\n" +
+    "\u23f1\ufe0f ~" + stats.hoursSavedTotal + "h gagn\u00e9es depuis ton inscription \ud83d\udca1";
 
   if (user.plan === 'pro' || user.plan === 'etudiant') {
     await whatsapp.sendButtons(user.whatsapp_id, info, [
