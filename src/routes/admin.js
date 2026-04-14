@@ -411,6 +411,9 @@ router.post('/migrate', adminAuth, async (req, res) => {
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_flow_step INTEGER DEFAULT 0",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_flow_date DATE",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_opt_in BOOLEAN DEFAULT true",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS ia_interest TEXT",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS ia_interest_other TEXT",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS secondary_jobs JSONB DEFAULT '[]'::jsonb",
     ];
     const results = [];
     for (const sql of statements) {
