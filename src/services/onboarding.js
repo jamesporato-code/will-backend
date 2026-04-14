@@ -1,5 +1,7 @@
 const whatsapp = require('./whatsapp');
 const { updateProfile } = require('./userService');
+const claude = require('./claude');
+const { cacheResponse } = require('../services/redis');
 const logger = require('../utils/logger');
 const Stripe = require('stripe');
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -229,9 +231,9 @@ async function handleOnboarding(user, parsed) {
     } else if (parsed.text) {
       const text = parsed.text.trim().toLowerCase();
       let match;
-      match = text.match(/^(\\d{1,2})\\s*h\\s*(\\d{0,2})$/);
-      if (!match) match = text.match(/^(\\d{1,2})\\s*:\\s*(\\d{0,2})$/);
-      if (!match) { match = text.match(/^(\\d{1,2})$/); if (match) match[2] = '0'; }
+      match = text.match(/^(\d{1,2})\s*h\s*(\d{0,2})$/);
+      if (!match) match = text.match(/^(\d{1,2})\s*:\s*(\d{0,2})$/);
+      if (!match) { match = text.match(/^(\d{1,2})$/); if (match) match[2] = '0'; }
       if (match) { const h = parseInt(match[1], 10); if (h >= 0 && h <= 23) hour = h; }
     }
     if (hour === null) {
@@ -282,10 +284,16 @@ async function handleOnboarding(user, parsed) {
         user.whatsapp_id,
         "C'est parti ! 🎉\n\n" +
         "Tu commences avec l'essai gratuit (7 jours, 5 messages/jour).\n\n" +
-        (user.daily_opt_in !== false ? "Demain tu recevras ton premier message personnalisé ✉️\n\n" : "") +
         "Des questions ? Tape /help pour voir toutes mes commandes 🚀"
-      );
-      return true;
+        );
+
+        // Envoi immédiat du premier daily si opt-in
+        if (user.daily_opt_in !== false) {
+          await delay(2500);
+          await sendFirstDaily(user);
+        }
+
+        return true;
     } else {
       const checkoutUrl = await createCheckoutUrl(user.id, plan.name, plan.price);
       if (!checkoutUrl) {
@@ -327,6 +335,34 @@ async function createCheckoutUrl(userId, planName, price) {
   } catch (error) {
     logger.error('Stripe checkout error', { userId, error: error.message });
     return null;
+  }
+}
+
+
+async function sendFirstDaily(user) {
+  try {
+    const dailyContent = await claude.generateDailyContent({
+      displayName: user.display_name?.split(' ')[0] || '',
+      level: user.level || 'débutant',
+      job: user.job || '',
+    });
+    if (!dailyContent) {
+      logger.warn('First daily: no content generated', { userId: user.id });
+      return;
+    }
+    await cacheResponse('daily:' + user.id, dailyContent, 86400);
+    await whatsapp.sendButtons(
+      user.whatsapp_id,
+      dailyContent,
+      [
+        { id: 'daily_deep', title: "J'approfondis 🔍" },
+        { id: 'daily_example', title: 'Exemple concret 💼' },
+        { id: 'daily_next', title: 'Notion suivante ➡️' },
+      ]
+    );
+    logger.info('First daily sent after onboarding', { userId: user.id });
+  } catch (err) {
+    logger.error('Error sending first daily', { userId: user.id, error: err.message });
   }
 }
 
