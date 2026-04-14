@@ -23,7 +23,6 @@ async function sendDailyMessages(currentHour) {
       `SELECT id, whatsapp_id, level, display_name, job, plan, preferred_hour
        FROM users
        WHERE onboarding_complete = true
-         AND daily_opt_in IS NOT false
          AND plan != 'cancelled'
          AND (plan != 'trial' OR trial_ends_at > NOW())
          AND COALESCE(preferred_hour, 8) = $1`,
