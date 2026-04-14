@@ -13,7 +13,7 @@ async function findOrCreateUser(whatsappId, displayName) {
 }
 
 async function canSendMessage(user) {
-  const limits = { trial: 15, freemium: 8, etudiant: 40, pro: 999999, cancelled: 0 };
+  const limits = { trial: 15, etudiant: 40, pro: 999999, cancelled: 0 };
   const limit = limits[user.plan] || 0;
 
   const today = new Date().toISOString().split('T')[0];
@@ -79,6 +79,38 @@ async function saveMessage(userId, role, content, type, externalId) {
   );
 }
 
+// ============================================
+// Stats utilisateur : messages semaine, total, gain de temps estime
+// ============================================
+async function getUserStats(userId) {
+  try {
+    const result = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM messages WHERE user_id = $1 AND role = 'user' AND created_at >= NOW() - INTERVAL '7 days') as msg_week,
+        (SELECT COUNT(*) FROM messages WHERE user_id = $1 AND role = 'user') as msg_total,
+        (SELECT COUNT(DISTINCT DATE(created_at)) FROM messages WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '30 days') as active_days_month
+    `, [userId]);
+    const row = result.rows[0] || {};
+    const msgWeek = parseInt(row.msg_week || 0, 10);
+    const msgTotal = parseInt(row.msg_total || 0, 10);
+    const activeDaysMonth = parseInt(row.active_days_month || 0, 10);
+    // 5 min / message estime
+    const minutesSavedWeek = msgWeek * 5;
+    const minutesSavedTotal = msgTotal * 5;
+    return {
+      msgWeek,
+      msgTotal,
+      activeDaysMonth,
+      minutesSavedWeek,
+      minutesSavedTotal,
+      hoursSavedTotal: (minutesSavedTotal / 60).toFixed(1),
+      hoursSavedWeek: (minutesSavedWeek / 60).toFixed(1),
+    };
+  } catch (err) {
+    return { msgWeek: 0, msgTotal: 0, activeDaysMonth: 0, minutesSavedWeek: 0, minutesSavedTotal: 0, hoursSavedTotal: '0.0', hoursSavedWeek: '0.0' };
+  }
+}
+
 module.exports = {
   findOrCreateUser,
   canSendMessage,
@@ -86,4 +118,5 @@ module.exports = {
   updateProfile,
   findByStripeCustomerId,
   saveMessage,
+  getUserStats,
 };
