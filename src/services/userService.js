@@ -13,7 +13,7 @@ async function findOrCreateUser(whatsappId, displayName) {
 }
 
 async function canSendMessage(user) {
-  const limits = { trial: 5, freemium: 3, etudiant: 40, pro: 999999, cancelled: 0 };
+  const limits = { trial: 15, freemium: 8, etudiant: 40, pro: 999999, cancelled: 0 };
   const limit = limits[user.plan] || 0;
 
   const today = new Date().toISOString().split('T')[0];
