@@ -33,7 +33,7 @@ async function sendDailyMessages(currentHour) {
        FROM users
        WHERE onboarding_complete = true
          AND plan != 'cancelled'
-         AND (plan != 'trial' OR trial_ends_at > NOW())
+         AND (plan != 'trial' OR created_at > NOW() - INTERVAL '7 days')
          AND COALESCE(preferred_hour, 8) = $1`,
       [currentHour]
     );
