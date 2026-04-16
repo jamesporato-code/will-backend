@@ -43,59 +43,27 @@ async function sendSectorList(whatsappId, bodyText, buttonLabel, excludeIds = []
 // ============================================
 // INTÉRÊTS IA (24 choix sur 6 sections)
 // ============================================
+// WhatsApp list: max 10 rows TOTAL across all sections.
+// 10 options regroupees en 2 sections (titres max 24 chars).
 const IA_INTERESTS_SECTIONS = [
   {
-    title: '💼 Business & Entrepreneuriat',
+    title: '💼 Pro & Business',
     rows: [
-      { id: 'business', title: 'Business / Startup', description: 'Pitch, stratégie, scaling' },
-      { id: 'sales', title: 'Vente & Commercial', description: 'Prospection, closing, négo' },
-      { id: 'finance', title: 'Finance & Invest.', description: 'Analyse, reporting, levée' },
-      { id: 'management', title: 'Management', description: 'Équipe, leadership' },
+      { id: 'business', title: 'Business / Startup', description: 'Pitch, strategie, scaling' },
+      { id: 'marketing', title: 'Marketing & Vente', description: 'Acquisition, social, closing' },
+      { id: 'content', title: 'Creation contenu', description: 'Copy, blog, video, image' },
+      { id: 'dev', title: 'Code & Data', description: 'Dev, Copilot, SQL, agents IA' },
+      { id: 'management', title: 'Management / RH', description: 'Equipe, recrut., leadership' },
     ],
   },
   {
-    title: '📣 Marketing & Com',
+    title: '🎓 Perso & Skills',
     rows: [
-      { id: 'marketing', title: 'Marketing général', description: 'Stratégie, acquisition' },
-      { id: 'socialmedia', title: 'Social media', description: 'Posts, community mgmt' },
-      { id: 'seo', title: 'SEO / Content', description: 'Référencement, blog' },
-      { id: 'branding', title: 'Branding / Pub', description: 'Marque, campagnes' },
-    ],
-  },
-  {
-    title: '✍️ Création & Écriture',
-    rows: [
-      { id: 'copywriting', title: 'Copywriting', description: 'Rédaction persuasive' },
-      { id: 'storytelling', title: 'Storytelling', description: 'Narration, script' },
-      { id: 'content', title: 'Création contenu', description: 'Blog, podcast, vidéo' },
-      { id: 'visual', title: 'Créa visuelle', description: 'Image, design, Midjourney' },
-    ],
-  },
-  {
-    title: '📚 Études & Apprentissage',
-    rows: [
-      { id: 'studies', title: 'Études / Devoirs', description: 'Mémoires, révisions' },
-      { id: 'research', title: 'Recherche acad.', description: 'Thèse, publications' },
-      { id: 'teaching', title: 'Enseignement', description: 'Cours, pédagogie' },
-      { id: 'languages', title: 'Langues étrang.', description: 'Apprentissage langues' },
-    ],
-  },
-  {
-    title: '💻 Tech & Data',
-    rows: [
-      { id: 'dev', title: 'Développement', description: 'Code, Copilot, Cursor' },
-      { id: 'data', title: 'Data & Analyse', description: 'Excel, SQL, insights' },
-      { id: 'automation', title: 'Automatisation', description: 'Zapier, Make, n8n' },
-      { id: 'ai', title: 'AI / Deep tech', description: 'Agents, MCP, modèles' },
-    ],
-  },
-  {
-    title: '🎯 Perso & Métiers',
-    rows: [
-      { id: 'productivity', title: 'Productivité', description: 'Gain de temps au quotidien' },
-      { id: 'projectmgmt', title: 'Gestion projet', description: 'Planning, coordination' },
-      { id: 'hr', title: 'RH / Coaching', description: 'Recrut., formation' },
-      { id: 'other', title: 'Autre', description: 'Je précise en 1 phrase' },
+      { id: 'studies', title: 'Etudes / Apprentissage', description: 'Revisions, memoires, langues' },
+      { id: 'productivity', title: 'Productivite', description: 'Gain de temps au quotidien' },
+      { id: 'automation', title: 'Automatisation', description: 'Zapier, Make, workflows' },
+      { id: 'ai', title: 'AI / Deep tech', description: 'Agents, MCP, LLMs, modeles' },
+      { id: 'other', title: 'Autre', description: 'Je precise en 1 phrase' },
     ],
   },
 ];
