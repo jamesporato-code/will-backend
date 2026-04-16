@@ -50,7 +50,8 @@ async function incrementDailyCount(userId) {
 async function updateProfile(userId, updates) {
   const allowed = ['name', 'display_name', 'job', 'level', 'interests', 'plan',
     'onboarding_complete', 'onboarding_step', 'stripe_customer_id',
-    'stripe_subscription_id', 'preferred_hour'];
+    'stripe_subscription_id', 'preferred_hour',
+    'ia_interest', 'ia_interest_other', 'daily_opt_in'];
 
   const fields = Object.keys(updates).filter(k => allowed.includes(k));
   if (fields.length === 0) return;
