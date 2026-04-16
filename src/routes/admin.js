@@ -325,7 +325,13 @@ router.post('/reset-user/:id', adminAuth, async (req, res) => {
         interests = NULL,
         daily_opt_in = NULL,
         preferred_hour = NULL,
-        daily_message_count = 0
+        daily_message_count = 0,
+        plan = 'trial',
+        created_at = NOW(),
+        secondary_jobs = NULL,
+        ia_interest = NULL,
+        ia_interest_other = NULL,
+        trial_reminder_sent = false
       WHERE id = $1
     `, [userId]);
 
