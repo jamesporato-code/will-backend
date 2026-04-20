@@ -331,7 +331,15 @@ router.post('/reset-user/:id', adminAuth, async (req, res) => {
         secondary_jobs = NULL,
         ia_interest = NULL,
         ia_interest_other = NULL,
-        trial_reminder_sent = false
+        trial_reminder_sent = false,
+        streak = 0,
+        current_module = 1,
+        module_progress = '{}'::jsonb,
+        trial_reminder_j5 = false,
+        trial_reminder_j6 = false,
+        trial_reminder_j7 = false,
+        trial_reminder_j14 = false,
+        last_message_date = NULL
       WHERE id = $1
     `, [userId]);
 
@@ -426,6 +434,7 @@ router.post('/migrate', adminAuth, async (req, res) => {
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_failed_at TIMESTAMP",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_grace_until TIMESTAMP",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_message_date TIMESTAMP",
+      "ALTER TABLE users ALTER COLUMN current_module TYPE INTEGER USING 1",
     ];
     const results = [];
     for (const sql of statements) {
