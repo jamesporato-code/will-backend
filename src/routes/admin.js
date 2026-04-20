@@ -410,19 +410,22 @@ router.post('/trigger-daily/:id', adminAuth, async (req, res) => {
 router.post('/migrate', adminAuth, async (req, res) => {
   try {
     const statements = [
-      "ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_count INTEGER DEFAULT 0",
-      "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_daily_activity DATE",
-      "ALTER TABLE users ADD COLUMN IF NOT EXISTS current_module TEXT DEFAULT 'prompt-engineering'",
-      "ALTER TABLE users ADD COLUMN IF NOT EXISTS module_day INTEGER DEFAULT 1",
-      "ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_flow_step INTEGER DEFAULT 0",
-      "ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_flow_date DATE",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS streak INTEGER DEFAULT 0",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS current_module INTEGER DEFAULT 1",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS module_progress JSONB DEFAULT '{}'::jsonb",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_opt_in BOOLEAN DEFAULT true",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_hour INTEGER DEFAULT 8",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS ia_interest TEXT",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS ia_interest_other TEXT",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS secondary_jobs JSONB DEFAULT '[]'::jsonb",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_reminder_sent BOOLEAN DEFAULT false",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_reminder_j5 BOOLEAN DEFAULT false",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_reminder_j6 BOOLEAN DEFAULT false",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_reminder_j7 BOOLEAN DEFAULT false",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_reminder_j14 BOOLEAN DEFAULT false",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_failed_at TIMESTAMP",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_grace_until TIMESTAMP",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_message_date TIMESTAMP",
     ];
     const results = [];
     for (const sql of statements) {
