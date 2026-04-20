@@ -10,17 +10,19 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 // ============================================
-// SECTEURS (8 options)
+// SECTEURS (10 options)
 // ============================================
 const SECTORS = [
-  { id: 'marketing', title: 'Marketing / Comm', description: 'Pub, contenu, réseaux sociaux' },
-  { id: 'tech', title: 'Tech / Dev', description: 'Développement, data, produit, IT' },
-  { id: 'business', title: 'Business / Finance', description: 'Vente, gestion, conseil' },
-  { id: 'creation', title: 'Création / Design', description: 'Graphisme, vidéo, UX, photo' },
-  { id: 'education', title: 'Éducation / RH', description: 'Formation, recrutement' },
-  { id: 'sante', title: 'Santé / Sciences', description: 'Médical, recherche, pharma' },
-  { id: 'etudiant', title: 'Étudiant', description: 'Licence, master, doctorat' },
-  { id: 'autre', title: 'Autre', description: 'Autre secteur ou indépendant' },
+  { id: 'marketing', title: 'Marketing / Comm', description: 'Pub, contenu, reseaux sociaux' },
+  { id: 'tech', title: 'Tech / Dev / Data', description: 'Code, IA, data, produit, IT' },
+  { id: 'business', title: 'Business / Finance', description: 'Vente, gestion, conseil, compta' },
+  { id: 'creation', title: 'Creation / Design', description: 'Graphisme, video, UX, photo' },
+  { id: 'education', title: 'Education / Formation', description: 'Enseignement, e-learning, RH' },
+  { id: 'sante', title: 'Sante / Bien-etre', description: 'Medical, pharma, coaching' },
+  { id: 'juridique', title: 'Droit / Immobilier', description: 'Juridique, notariat, immo' },
+  { id: 'artisanat', title: 'Artisanat / Commerce', description: 'Boutique, resto, artisan' },
+  { id: 'freelance', title: 'Freelance / Startup', description: 'Independant, entrepreneur' },
+  { id: 'autre', title: 'Autre secteur', description: 'Je precise apres' },
 ];
 
 function getSectorLabel(id) {
