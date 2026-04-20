@@ -7,6 +7,7 @@ const userService = require('../services/userService');
 const { getUserStats } = require('../services/userService');
 const onboarding = require('../services/onboarding');
 const { getCachedResponse, cacheResponse } = require('../services/redis');
+const { handleProMenuChoice } = require('../cron/scheduler');
 const Stripe = require('stripe');
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -110,6 +111,12 @@ router.post('/', async (req, res) => {
     const canSend = await userService.canSendMessage(user);
     if (!canSend.allowed) {
       await handleLimitReached(user, canSend.reason);
+      return;
+    }
+
+    // Pro menu choice (from daily menu)
+    if (parsed.buttonId?.startsWith('menu_')) {
+      await handleProMenuChoice(user, parsed.buttonId);
       return;
     }
 
