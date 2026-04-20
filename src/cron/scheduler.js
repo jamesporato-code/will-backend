@@ -198,7 +198,7 @@ async function sendProMenu(user, jsDay) {
   }
 
   // Calculer la progression du parcours pour le bouton
-  const { getCurrentSession } = require('./modules');
+  const { getCurrentSession } = require('../services/modules');
   const session = getCurrentSession(user);
   const pct = session?.overallPercent || 0;
 
