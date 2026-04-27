@@ -89,7 +89,7 @@ router.get('/stats', adminAuth, async (req, res) => {
     // Taux de conversion trial -> payant
     const paidUsers = await query(`
       SELECT COUNT(*) as total FROM users
-      WHERE plan IN ('etudiant', 'pro')
+      WHERE plan = 'pro'
     `);
 
     res.json({

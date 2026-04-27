@@ -1,10 +1,12 @@
 // ============================================
-// SCHEDULER â Will Coach IA
+// SCHEDULER — Will Coach IA
 // Flow quotidien par plan :
-// - Trial : 1 session parcours/jour (module intro)
-// - Etudiant : calendrier fixe (L/Me/V parcours, Ma/Je actu, Sa recap)
-// - Pro : menu quotidien (choix du contenu)
-// + Crons de relance trial (J+5, J+6, J+7, J+14)
+// - Trial (7 jours) : contenu mixe selon le jour J1..J7
+//   J1-J2 parcours, J3 actu, J4 parcours, J5 outil, J6 prompt, J7 recap
+// - Pro : menu quotidien (parcours / actu / outil ou prompt)
+// + Crons :
+//   - Reset compteur quotidien minuit Paris
+//   - Relances trial (J+5, J+6, J+7, J+14)
 // ============================================
 
 const cron = require('node-cron');
@@ -30,7 +32,19 @@ function startDailyCron() {
     await sendTrialReminders();
   }, { timezone: 'Europe/Paris' });
 
-  logger.info('Crons planifies : horaire + trial reminders (10h)');
+  // Cron reset compteur quotidien : minuit Paris
+  cron.schedule('0 0 * * *', async () => {
+    try {
+      const result = await query(
+        'UPDATE users SET daily_message_count = 0 WHERE daily_message_count > 0'
+      );
+      logger.info('Daily counter reset', { rowsAffected: result.rowCount });
+    } catch (err) {
+      logger.error('Erreur reset compteur quotidien', { error: err.message });
+    }
+  }, { timezone: 'Europe/Paris' });
+
+  logger.info('Crons planifies : horaire + trial reminders (10h) + reset compteur (minuit)');
 }
 
 // ============================================
@@ -51,25 +65,14 @@ async function sendDailyMessages(currentHour) {
     const users = usersResult.rows;
     logger.info(users.length + ' utilisateurs a notifier pour ' + currentHour + 'h');
 
-    // Jour de la semaine (1=Lundi ... 7=Dimanche) en heure Paris
-    const now = new Date();
-    const dayOfWeek = parseInt(now.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', weekday: 'short' }).substring(0, 3), 10);
-    // Alternative plus fiable
-    const parisDate = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
-    const jsDay = parisDate.getDay(); // 0=dim, 1=lun, 2=mar, ...
-
     for (const user of users) {
       try {
-        // Incrementer le streak
         await updateStreak(user);
 
         if (user.plan === 'trial') {
           await sendTrialDaily(user);
         } else if (user.plan === 'pro') {
-          await sendProMenu(user, jsDay);
-        } else {
-          // etudiant (ou student)
-          await sendEtudiantDaily(user, jsDay);
+          await sendProMenu(user);
         }
 
         await new Promise(r => setTimeout(r, 500));
@@ -83,77 +86,47 @@ async function sendDailyMessages(currentHour) {
 }
 
 // ============================================
-// TRIAL : 1 session parcours intro/jour
+// TRIAL : contenu mixe selon le jour de l'essai
+// J1 parcours, J2 parcours, J3 actu, J4 parcours, J5 outil, J6 prompt, J7 recap
 // ============================================
-async function sendTrialDaily(user) {
-  const name = user.display_name?.split(' ')[0] || '';
-  const result = await contentTypes.generateParcours(user);
-  if (!result || !result.text) {
-    await whatsapp.sendText(user.whatsapp_id, 'Bonjour ' + name + ' ! Pose-moi une question sur l\'IA aujourd\'hui !');
-    return;
-  }
-
-  await cacheResponse('daily:' + user.id, result.text, 86400);
-
-  await whatsapp.sendButtons(
-    user.whatsapp_id,
-    'Bonjour ' + name + ' !\n\n' + result.text,
-    [
-      { id: 'daily_deep', title: 'J\'approfondis' },
-      { id: 'daily_example', title: 'Exemple concret' },
-      { id: 'daily_next', title: 'Notion suivante' },
-    ],
-    null, 'Ton parcours Will'
-  );
-
-  // Sauvegarder la progression
-  if (result.nextProgress) {
-    await query(
-      'UPDATE users SET current_module = $1, module_progress = $2 WHERE id = $3',
-      [result.nextProgress.current_module, JSON.stringify(result.nextProgress.module_progress), user.id]
-    );
-  }
-  await userService.incrementDailyCount(user.id);
+function getTrialDay(user) {
+  const created = new Date(user.created_at);
+  const now = new Date();
+  const days = Math.floor((now - created) / (1000 * 60 * 60 * 24));
+  return Math.min(Math.max(days + 1, 1), 7);
 }
 
-// ============================================
-// ETUDIANT : calendrier fixe
-// L=parcours, Ma=actu, Me=parcours, Je=actu, V=parcours, Sa=recap, Di=rien
-// ============================================
-async function sendEtudiantDaily(user, jsDay) {
+async function sendTrialDaily(user) {
   const name = user.display_name?.split(' ')[0] || '';
-
-  // Dimanche = repos
-  if (jsDay === 0) return;
+  const trialDay = getTrialDay(user);
 
   let content = null;
   let contentType = '';
+  let nextProgress = null;
 
-  if (jsDay === 1 || jsDay === 3 || jsDay === 5) {
-    // Lundi, Mercredi, Vendredi : Parcours structure (Type A)
+  if (trialDay === 1 || trialDay === 2 || trialDay === 4) {
     const result = await contentTypes.generateParcours(user);
     if (result && result.text) {
       content = result.text;
       contentType = 'parcours';
-      if (result.nextProgress) {
-        await query(
-          'UPDATE users SET current_module = $1, module_progress = $2 WHERE id = $3',
-          [result.nextProgress.current_module, JSON.stringify(result.nextProgress.module_progress), user.id]
-        );
-      }
+      nextProgress = result.nextProgress;
     }
-  } else if (jsDay === 2 || jsDay === 4) {
-    // Mardi, Jeudi : Actu IA (Type B)
+  } else if (trialDay === 3) {
     content = await contentTypes.generateActuIA(user);
     contentType = 'actu';
-  } else if (jsDay === 6) {
-    // Samedi : Recap hebdo
+  } else if (trialDay === 5) {
+    content = await contentTypes.generateOutilDuJour(user);
+    contentType = 'outil';
+  } else if (trialDay === 6) {
+    content = await contentTypes.generatePromptDuJour(user);
+    contentType = 'prompt';
+  } else if (trialDay === 7) {
     content = await contentTypes.generateRecapHebdo(user);
     contentType = 'recap';
   }
 
   if (!content) {
-    await whatsapp.sendText(user.whatsapp_id, 'Bonjour ' + name + ' ! Pose-moi une question sur l\'IA !');
+    await whatsapp.sendText(user.whatsapp_id, 'Bonjour ' + name + ' ! Pose-moi une question sur l\'IA aujourd\'hui !');
     return;
   }
 
@@ -162,7 +135,7 @@ async function sendEtudiantDaily(user, jsDay) {
   const buttons = contentType === 'recap'
     ? [
         { id: 'daily_deep', title: 'Voir mes stats' },
-        { id: 'daily_next', title: 'Teaser lundi' },
+        { id: 'plan_pro', title: 'Passer Pro 6,99' },
       ]
     : [
         { id: 'daily_deep', title: 'J\'approfondis' },
@@ -172,6 +145,8 @@ async function sendEtudiantDaily(user, jsDay) {
 
   const footer = contentType === 'parcours' ? 'Ton parcours Will'
     : contentType === 'actu' ? 'Actu IA du jour'
+    : contentType === 'outil' ? 'Outil du jour'
+    : contentType === 'prompt' ? 'Prompt du jour'
     : 'Recap hebdo Will';
 
   await whatsapp.sendButtons(
@@ -179,14 +154,24 @@ async function sendEtudiantDaily(user, jsDay) {
     'Bonjour ' + name + ' !\n\n' + content,
     buttons, null, footer
   );
+
+  if (nextProgress) {
+    await query(
+      'UPDATE users SET current_module = $1, module_progress = $2 WHERE id = $3',
+      [nextProgress.current_module, JSON.stringify(nextProgress.module_progress), user.id]
+    );
+  }
   await userService.incrementDailyCount(user.id);
 }
 
 // ============================================
 // PRO : menu quotidien (choix)
 // ============================================
-async function sendProMenu(user, jsDay) {
+async function sendProMenu(user) {
   const name = user.display_name?.split(' ')[0] || '';
+
+  const parisDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+  const jsDay = parisDate.getDay(); // 0=dim, 1=lun, ..., 6=sam
 
   // Dimanche : recap auto (pas de menu)
   if (jsDay === 0) {
@@ -197,28 +182,22 @@ async function sendProMenu(user, jsDay) {
     return;
   }
 
-  // Calculer la progression du parcours pour le bouton
   const { getCurrentSession } = require('../services/modules');
   const session = getCurrentSession(user);
   const pct = session?.overallPercent || 0;
 
-  // Le jeudi : Parcours / Actu / Prompt (pas d'outil)
-  // Les autres jours : Parcours / Actu / Outil
-  let buttons;
-  if (jsDay === 4) {
-    // Jeudi
-    buttons = [
-      { id: 'menu_parcours', title: 'Parcours (' + pct + '%)' },
-      { id: 'menu_actu', title: 'Actu IA du jour' },
-      { id: 'menu_prompt', title: 'Prompt du jour' },
-    ];
-  } else {
-    buttons = [
-      { id: 'menu_parcours', title: 'Parcours (' + pct + '%)' },
-      { id: 'menu_actu', title: 'Actu IA du jour' },
-      { id: 'menu_outil', title: 'Outil du jour' },
-    ];
-  }
+  // Jeudi : Parcours / Actu / Prompt — autres jours : Parcours / Actu / Outil
+  const buttons = jsDay === 4
+    ? [
+        { id: 'menu_parcours', title: 'Parcours (' + pct + '%)' },
+        { id: 'menu_actu', title: 'Actu IA du jour' },
+        { id: 'menu_prompt', title: 'Prompt du jour' },
+      ]
+    : [
+        { id: 'menu_parcours', title: 'Parcours (' + pct + '%)' },
+        { id: 'menu_actu', title: 'Actu IA du jour' },
+        { id: 'menu_outil', title: 'Outil du jour' },
+      ];
 
   await whatsapp.sendButtons(
     user.whatsapp_id,
@@ -229,23 +208,19 @@ async function sendProMenu(user, jsDay) {
 }
 
 // ============================================
-// Gerer le choix du menu Pro (appele depuis webhook)
+// Choix du menu Pro (appele depuis webhook)
 // ============================================
 async function handleProMenuChoice(user, buttonId) {
   let content = null;
   let footer = '';
+  let nextProgress = null;
 
   if (buttonId === 'menu_parcours') {
     const result = await contentTypes.generateParcours(user);
     if (result && result.text) {
       content = result.text;
       footer = 'Ton parcours Will';
-      if (result.nextProgress) {
-        await query(
-          'UPDATE users SET current_module = $1, module_progress = $2 WHERE id = $3',
-          [result.nextProgress.current_module, JSON.stringify(result.nextProgress.module_progress), user.id]
-        );
-      }
+      nextProgress = result.nextProgress;
     }
   } else if (buttonId === 'menu_actu') {
     content = await contentTypes.generateActuIA(user);
@@ -275,6 +250,13 @@ async function handleProMenuChoice(user, buttonId) {
     ],
     null, footer
   );
+
+  if (nextProgress) {
+    await query(
+      'UPDATE users SET current_module = $1, module_progress = $2 WHERE id = $3',
+      [nextProgress.current_module, JSON.stringify(nextProgress.module_progress), user.id]
+    );
+  }
   await userService.incrementDailyCount(user.id);
 }
 
@@ -283,13 +265,12 @@ async function handleProMenuChoice(user, buttonId) {
 // ============================================
 async function updateStreak(user) {
   try {
-    // Si le user a ete actif hier, incrementer le streak ; sinon, reset a 1
     const lastActivity = user.last_message_date;
     const today = new Date().toISOString().split('T')[0];
 
     if (lastActivity) {
       const lastDate = new Date(lastActivity).toISOString().split('T')[0];
-      const diffDays = Math.floor((new Date(today) - new Date(lastDate)) / (86400000));
+      const diffDays = Math.floor((new Date(today) - new Date(lastDate)) / 86400000);
       if (diffDays === 1) {
         await query('UPDATE users SET streak = COALESCE(streak, 0) + 1 WHERE id = $1', [user.id]);
       } else if (diffDays > 1) {
@@ -308,34 +289,29 @@ async function updateStreak(user) {
 // ============================================
 async function sendTrialReminders() {
   try {
-    // J+5 : "Plus que 2 jours"
     await sendReminderBatch(5, 6,
       (name) => (name ? 'Salut ' + name + ' !\n\n' : '') +
         'Plus que 2 jours pour profiter de ton essai gratuit !\n\n' +
         'Tu as deja commence a decouvrir l\'IA avec Will. Continue ton parcours sans interruption.\n\n' +
-        'Passe au plan payant pour garder acces a tout :',
+        'Passe Pro pour garder acces a tout (6,99/mois) :',
       'trial_reminder_j5'
     );
 
-    // J+6 : "Dernier jour"
     await sendReminderBatch(6, 7,
       (name) => (name ? name + ', ' : '') +
         'Dernier jour de ton essai gratuit !\n\n' +
-        'Demain, ton acces sera coupe. Continue ton parcours sans interruption :',
+        'Demain, ton acces sera coupe. Continue ton parcours Will sans interruption :',
       'trial_reminder_j6'
     );
 
-    // J+7 : "Essai termine"
     await sendReminderBatch(7, 8,
       (name) => 'Ton essai gratuit est termine !\n\n' +
         (name ? name + ', ' : '') +
-        'Merci d\'avoir teste Will. Pour continuer a apprendre l\'IA au quotidien :\n\n' +
-        'Etudiant : 4,99/mois (actu IA + parcours)\n' +
-        'Pro : 7,99/mois (tout + outils + prompts du jour)',
+        'Merci d\'avoir teste Will. Pour continuer a apprendre l\'IA au quotidien (parcours + actu + outils + prompts) :\n\n' +
+        'Pro : 6,99/mois, sans engagement.',
       'trial_reminder_j7'
     );
 
-    // J+14 : "Dernier rappel"
     await sendReminderBatch(14, 15,
       (name) => (name ? name + ', ' : '') +
         'Ca fait 2 semaines que ton essai Will est termine.\n\n' +
@@ -367,8 +343,7 @@ async function sendReminderBatch(minDays, maxDays, messageBuilder, reminderField
         const msg = messageBuilder(name);
 
         await whatsapp.sendButtons(user.whatsapp_id, msg, [
-          { id: 'plan_etudiant', title: 'Etudiant 4,99' },
-          { id: 'plan_pro', title: 'Pro 7,99' },
+          { id: 'plan_pro', title: 'Passer Pro 6,99' },
         ], null, 'Sans engagement');
 
         await query(`UPDATE users SET ${reminderField} = true WHERE id = $1`, [user.id]);

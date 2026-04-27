@@ -30,10 +30,51 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object;
-        logger.info('Stripe checkout.session.completed', { customerId: session.customer, clientRefId: session.client_reference_id });
-        // Lie l'user au customer Stripe
+        logger.info('Stripe checkout.session.completed', {
+          customerId: session.customer,
+          subscriptionId: session.subscription,
+          clientRefId: session.client_reference_id,
+        });
+
+        // Source de verite pour l'upgrade Pro : on set plan=pro UNIQUEMENT ici
         if (session.client_reference_id && session.customer) {
-          await updateProfile(session.client_reference_id, { stripe_customer_id: session.customer });
+          const updates = {
+            plan: 'pro',
+            onboarding_complete: true,
+            stripe_customer_id: session.customer,
+          };
+          if (session.subscription) updates.stripe_subscription_id = session.subscription;
+          await updateProfile(session.client_reference_id, updates);
+
+          // Recuperer le whatsapp_id pour la confirmation
+          const userResult = await query(
+            'SELECT whatsapp_id, display_name FROM users WHERE id = $1',
+            [session.client_reference_id]
+          );
+          const user = userResult.rows[0];
+          if (user) {
+            try {
+              const name = user.display_name?.split(' ')[0] || '';
+              await whatsapp.sendText(
+                user.whatsapp_id,
+                'Paiement confirme ! Bienvenue sur Will Pro' + (name ? ', ' + name : '') + ' !\n\n' +
+                'Ton plan est maintenant actif. Chaque matin tu recevras ton menu personnalise.\n\n' +
+                'En attendant, pose-moi toutes tes questions sur l\'IA.'
+              );
+              await new Promise(r => setTimeout(r, 1500));
+              await whatsapp.sendButtons(
+                user.whatsapp_id,
+                'Pour commencer, qu\'est-ce qui t\'interesse le plus ?',
+                [
+                  { id: 'topic_outils', title: 'Decouvrir des outils' },
+                  { id: 'topic_prompt', title: 'Ecrire de bons prompts' },
+                  { id: 'topic_actu', title: 'Actu IA du moment' },
+                ]
+              );
+            } catch (waErr) {
+              logger.error('Erreur notif checkout.session.completed', { userId: user.id, error: waErr.message });
+            }
+          }
         }
         break;
       }
