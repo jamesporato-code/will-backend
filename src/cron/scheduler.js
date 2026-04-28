@@ -132,9 +132,25 @@ function getTrialDay(user) {
   return Math.min(Math.max(days + 1, 1), 7);
 }
 
+// Si l'utilisateur a échangé avec Will dans les ~30 dernières minutes,
+// il est dans une "conversation active" → on saute le "Bonjour".
+async function isConversationActive(userId) {
+  try {
+    const result = await query(
+      `SELECT 1 FROM messages WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '30 minutes' LIMIT 1`,
+      [userId]
+    );
+    return result.rows.length > 0;
+  } catch (err) {
+    return false;
+  }
+}
+
 async function sendTrialDaily(user, opts = {}) {
   const name = user.display_name?.split(' ')[0] || '';
-  const greet = name ? 'Bonjour ' + name + '.' : 'Bonjour.';
+  // Pas de "Bonjour" si on vient de finir l'onboarding ou si une conversation est en cours
+  const skipGreet = opts.first === true || (await isConversationActive(user.id));
+  const greet = skipGreet ? '' : (name ? 'Bonjour ' + name + '.' : 'Bonjour.');
   // opts.first force le jour 1 quand l'onboarding vient juste de finir
   const trialDay = opts.first ? 1 : getTrialDay(user);
 
@@ -146,8 +162,8 @@ async function sendTrialDaily(user, opts = {}) {
     }
 
     const intro = opts.first
-      ? greet + ' On démarre ton parcours.'
-      : greet + ' Voici ta session du jour.';
+      ? 'On démarre ton parcours.'
+      : (skipGreet ? 'Voici ta session du jour.' : greet + ' Voici ta session du jour.');
 
     await cacheResponse('daily:' + user.id, result.text, 86400);
     // Body sendButtons limité à 1024 chars côté Meta → on split en 2 messages.
@@ -182,10 +198,10 @@ async function sendTrialDaily(user, opts = {}) {
       return await sendFallback(user, greet, 'actu generation failed');
     }
     await cacheResponse('daily:' + user.id, actu, 86400);
-    await whatsapp.sendText(
-      user.whatsapp_id,
-      greet + ' Aujourd\'hui un aperçu de ce que tu reçois en Pro : l\'actu IA du jour.\n\n' + actu
-    );
+    const j6Intro = skipGreet
+      ? 'Aujourd\'hui un aperçu de ce que tu reçois en Pro : l\'actu IA du jour.'
+      : greet + ' Aujourd\'hui un aperçu de ce que tu reçois en Pro : l\'actu IA du jour.';
+    await whatsapp.sendText(user.whatsapp_id, j6Intro + '\n\n' + actu);
     await new Promise(r => setTimeout(r, 800));
     await whatsapp.sendButtons(
       user.whatsapp_id,
@@ -204,9 +220,12 @@ async function sendTrialDaily(user, opts = {}) {
   // J7 : récap + invitation Pro
   if (trialDay === 7) {
     const recap = await contentTypes.generateRecapHebdo(user);
+    const fallbackBody = skipGreet
+      ? 'Ton essai se termine demain. Tu as découvert le Module 1 (Introduction à l\'IA). Pour continuer (Modules 2 à 10, actu, outils, prompts), passe Pro à 6,99 €/mois.'
+      : greet + ' Ton essai se termine demain. Tu as découvert le Module 1 (Introduction à l\'IA). Pour continuer (Modules 2 à 10, actu, outils, prompts), passe Pro à 6,99 €/mois.';
     const body = recap
       ? recap + '\n\nDemain ton essai se termine. Pour continuer le parcours (Modules 2 à 10), passe Pro à 6,99 €/mois.'
-      : greet + ' Ton essai se termine demain. Tu as découvert le Module 1 (Introduction à l\'IA). Pour continuer (Modules 2 à 10, actu, outils, prompts), passe Pro à 6,99 €/mois.';
+      : fallbackBody;
 
     await whatsapp.sendButtons(
       user.whatsapp_id,
@@ -230,7 +249,9 @@ async function sendTrialDaily(user, opts = {}) {
 // ============================================
 async function sendProDaily(user, opts = {}) {
   const name = user.display_name?.split(' ')[0] || '';
-  const greet = name ? 'Bonjour ' + name + '.' : 'Bonjour.';
+  const skipGreet = opts.first === true || (await isConversationActive(user.id));
+  const greet = skipGreet ? '' : (name ? 'Bonjour ' + name + '.' : 'Bonjour.');
+  const prefix = skipGreet ? '' : greet + '\n\n';
 
   const parisDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
   const jsDay = parisDate.getDay(); // 0=dim, 1=lun, ..., 6=sam
@@ -243,7 +264,7 @@ async function sendProDaily(user, opts = {}) {
   if (jsDay === 0) {
     const recap = await contentTypes.generateRecapHebdo(user);
     if (recap) {
-      await whatsapp.sendText(user.whatsapp_id, greet + '\n\n' + recap);
+      await whatsapp.sendText(user.whatsapp_id, prefix + recap);
       await userService.incrementDailyCount(user.id);
       return { ok: true, type: 'pro_recap' };
     }
@@ -252,7 +273,7 @@ async function sendProDaily(user, opts = {}) {
 
   // Parcours terminé → rotation actu/outil/prompt
   if (parcoursDone) {
-    return await sendProRotation(user, greet, jsDay);
+    return await sendProRotation(user, prefix, jsDay);
   }
 
   // Lundi → Samedi : prochaine session du module courant
@@ -266,7 +287,7 @@ async function sendProDaily(user, opts = {}) {
     : 'Ton parcours Will';
 
   await cacheResponse('daily:' + user.id, result.text, 86400);
-  await whatsapp.sendText(user.whatsapp_id, greet + '\n\n' + result.text);
+  await whatsapp.sendText(user.whatsapp_id, prefix + result.text);
   await new Promise(r => setTimeout(r, 800));
   await whatsapp.sendButtons(
     user.whatsapp_id,
@@ -290,7 +311,7 @@ async function sendProDaily(user, opts = {}) {
   return { ok: true, type: 'pro_parcours' };
 }
 
-async function sendProRotation(user, greet, jsDay) {
+async function sendProRotation(user, prefix, jsDay) {
   // Lun(1)/Mer(3)/Ven(5) → actu  ;  Mar(2)/Jeu(4)/Sam(6) → outil ou prompt
   let content = null;
   let footer = '';
@@ -306,11 +327,11 @@ async function sendProRotation(user, greet, jsDay) {
   }
 
   if (!content) {
-    return await sendFallback(user, greet, 'rotation generation failed');
+    return await sendFallback(user, '', 'rotation generation failed');
   }
 
   await cacheResponse('daily:' + user.id, content, 86400);
-  await whatsapp.sendText(user.whatsapp_id, greet + '\n\n' + content);
+  await whatsapp.sendText(user.whatsapp_id, (prefix || '') + content);
   await new Promise(r => setTimeout(r, 800));
   await whatsapp.sendButtons(
     user.whatsapp_id,
@@ -334,9 +355,10 @@ async function sendProRotation(user, greet, jsDay) {
 async function sendFallback(user, greet, reason) {
   logger.warn('Daily fallback', { userId: user.id, reason });
   try {
+    const lead = greet ? greet + ' ' : '';
     await whatsapp.sendText(
       user.whatsapp_id,
-      greet + ' Je rencontre un petit souci pour préparer ta session. Réessaie dans quelques minutes ou pose-moi directement ta question.'
+      lead + 'Je rencontre un petit souci pour préparer ta session. Réessaie dans quelques minutes ou pose-moi directement ta question.'
     );
   } catch (err) {
     logger.error('Erreur envoi fallback', { userId: user.id, error: err.message });
