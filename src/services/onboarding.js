@@ -355,7 +355,7 @@ async function handleOnboarding(user, parsed) {
 
   if (parsed.text && !parsed.buttonId && !parsed.listId) {
     logger.warn('Text input during onboarding', { userId: user.id, step });
-    if (step !== 8 && step !== 61) {
+    if (step !== 61) {
       await whatsapp.sendText(user.whatsapp_id, 'Utilise les boutons ou la liste ci-dessus pour avancer.');
       return true;
     }

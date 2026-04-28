@@ -14,7 +14,8 @@ const claude = require('../services/claude');
 const userService = require('../services/userService');
 const { getUserStats } = require('../services/userService');
 const onboarding = require('../services/onboarding');
-const { getCachedResponse, cacheResponse } = require('../services/redis');
+const menu = require('../services/menu');
+const { getCachedResponse } = require('../services/redis');
 const { handleProMenuChoice, sendDailyForUser } = require('../cron/scheduler');
 const Stripe = require('stripe');
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -89,16 +90,17 @@ router.post('/', async (req, res) => {
     const textLower = (parsed.text || '').toLowerCase().trim();
 
     // === SLASH COMMANDS (disponibles avant et après onboarding) ===
+    if (textLower === '/menu' || textLower === 'menu') {
+      if (!user.onboarding_complete) {
+        const handled = await onboarding.handleOnboarding(user, parsed);
+        if (handled) return;
+      }
+      await menu.showMainMenu(user);
+      return;
+    }
+
     if (textLower === '/help' || textLower === 'help' || textLower === '/aide') {
-      await whatsapp.sendText(
-        user.whatsapp_id,
-        '*Commandes disponibles*\n\n' +
-        '/help — Cette aide\n' +
-        '/daily — Activer ou désactiver les messages quotidiens\n' +
-        '/stop — Se désinscrire des messages quotidiens\n' +
-        'mon compte — Voir ton profil et ton plan\n\n' +
-        'Sinon, pose-moi directement ta question sur l\'IA.'
-      );
+      await menu.showHelp(user);
       return;
     }
 
@@ -116,10 +118,12 @@ router.post('/', async (req, res) => {
       const newStatus = !user.daily_opt_in;
       await userService.updateProfile(user.id, { daily_opt_in: newStatus });
       const hour = user.preferred_hour || 8;
+      const minute = user.preferred_minute || 0;
+      const minPad = minute < 10 ? '0' + minute : '' + minute;
       await whatsapp.sendText(
         user.whatsapp_id,
         newStatus
-          ? 'Messages quotidiens réactivés. Tu recevras le prochain à ' + hour + 'h.'
+          ? 'Messages quotidiens réactivés. Tu recevras le prochain à ' + hour + 'h' + minPad + '.'
           : 'Messages quotidiens désactivés. Tape /daily pour les réactiver.'
       );
       return;
@@ -150,9 +154,23 @@ router.post('/', async (req, res) => {
       return;
     }
 
-    // Pro menu choice (depuis le menu quotidien)
-    if (parsed.buttonId?.startsWith('menu_')) {
-      await handleProMenuChoice(user, parsed.buttonId);
+    // Quiz capture profil (depuis menu_quiz)
+    if (parsed.listId?.startsWith('quiz_')) {
+      const handled = await menu.handleQuizAnswer(user, parsed.listId);
+      if (handled) return;
+    }
+
+    // Hub /menu : nouveaux boutons (menu_hub, menu_today, menu_help, menu_quiz)
+    if (parsed.buttonId?.startsWith('menu_') || parsed.listId?.startsWith('menu_')) {
+      const id = parsed.buttonId || parsed.listId;
+      const handled = await menu.handleMenuButton(user, id);
+      if (handled) return;
+      // Fallback : menu_parcours / menu_actu / menu_outil / menu_prompt / menu_account
+      if (id === 'menu_account') {
+        await handleMyAccount(user);
+        return;
+      }
+      await handleProMenuChoice(user, id);
       return;
     }
 
@@ -162,8 +180,14 @@ router.post('/', async (req, res) => {
       return;
     }
 
-    // Message libre vers l'IA
-    await handleFreeMessage(user, parsed);
+    // Texte libre → redirige vers le hub /menu (Will fonctionne par boutons)
+    if (parsed.text) {
+      await menu.showMainMenu(
+        user,
+        'Will fonctionne entièrement par boutons — pas besoin d\'écrire. Choisis ce que tu veux faire ci-dessous.'
+      );
+      return;
+    }
 
   } catch (err) {
     logger.error('Erreur traitement webhook', err);
@@ -202,30 +226,6 @@ async function handleMyAccount(user) {
       { id: 'account_change_level', title: 'Changer niveau' },
     ], null, 'Pro pour tout débloquer');
   }
-}
-
-async function handleFreeMessage(user, parsed) {
-  const userText = parsed.text || '';
-  const cacheKey = userText.toLowerCase().trim().replace(/[^a-z0-9 ]/g, '').substring(0, 100);
-  const cached = await getCachedResponse(cacheKey);
-
-  let response;
-  if (cached) {
-    response = cached;
-  } else {
-    response = await claude.generateResponse(user.id, userText, {
-      level: user.level,
-      job: user.job,
-      plan: user.plan,
-      displayName: user.display_name,
-    });
-    if (userText.length < 100) await cacheResponse(cacheKey, response, 3600);
-  }
-
-  await userService.saveMessage(user.id, 'user', userText, 'chat', parsed.messageId);
-  await userService.saveMessage(user.id, 'assistant', response, 'chat');
-  await userService.incrementDailyCount(user.id);
-  await whatsapp.sendText(user.whatsapp_id, response);
 }
 
 async function handleContentButton(user, parsed) {
