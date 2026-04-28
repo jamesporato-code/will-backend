@@ -357,57 +357,41 @@ router.post('/reset-user/:id', adminAuth, async (req, res) => {
 });
 
 // ============================================
-// POST /api/admin/trigger-daily/:id - Trigger daily message now
+// POST /api/admin/trigger-daily/:id - Force le daily maintenant (debug)
+// Optionnel : ?first=1 pour simuler le 1er daily post-onboarding
 // ============================================
 router.post('/trigger-daily/:id', adminAuth, async (req, res) => {
   try {
-    const whatsapp = require('../services/whatsapp');
-    const claude = require('../services/claude');
-    const { cacheResponse } = require('../services/redis');
-
+    const { sendDailyForUser } = require('../cron/scheduler');
     const userId = req.params.id;
-    const userResult = await query(
-      'SELECT id, whatsapp_id, level, display_name, job FROM users WHERE id = $1',
-      [userId]
-    );
 
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Utilisateur non trouv\u00e9' });
+    const userCheck = await query('SELECT id FROM users WHERE id = $1', [userId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
     }
 
-    const user = userResult.rows[0];
-    const userContext = {
-      level: user.level,
-      job: user.job,
-      displayName: user.display_name,
-    };
+    const opts = req.query.first === '1' ? { first: true } : {};
+    const result = await sendDailyForUser(userId, opts);
 
-    // Generate daily content via Claude + Tavily
-    const dailyContent = await claude.generateDailyContent(userContext);
+    logger.info('Daily triggered manually by admin', { userId, result });
 
-    if (!dailyContent) {
-      return res.status(500).json({ error: 'Erreur g\u00e9n\u00e9ration contenu' });
+    if (!result.ok) {
+      return res.status(500).json({
+        success: false,
+        error: result.error,
+        userId,
+      });
     }
-
-    // Cache for 24h so button followups work
-    await cacheResponse('daily:' + user.id, dailyContent, 86400);
-
-    // Send via WhatsApp with 3 interactive buttons
-    await whatsapp.sendButtons(user.whatsapp_id, dailyContent, [
-      { id: 'daily_deep', title: "J'approfondis \ud83d\udd0d" },
-      { id: 'daily_example', title: 'Exemple concret \ud83d\udcbc' },
-      { id: 'daily_next', title: 'Notion suivante \u27a1\ufe0f' },
-    ]);
-
-    logger.info('Daily triggered manually by admin', { userId: user.id });
 
     res.json({
       success: true,
-      message: 'Daily envoy\u00e9',
-      content: dailyContent,
+      message: 'Daily envoyé',
+      type: result.type,
+      day: result.day,
+      userId,
     });
   } catch (err) {
-    logger.error('Admin trigger-daily error', { error: err.message });
+    logger.error('Admin trigger-daily error', { error: err.message, stack: err.stack });
     res.status(500).json({ error: 'Erreur serveur: ' + err.message });
   }
 });
