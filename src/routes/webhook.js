@@ -258,7 +258,7 @@ async function handleContentButton(user, parsed) {
 }
 
 async function handleDailyButton(user, buttonId) {
-  const buttonTypeMap = { daily_deep: 'deep', daily_example: 'example', daily_next: 'next' };
+  const buttonTypeMap = { daily_deep: 'deep', daily_example: 'example', daily_minidefi: 'minidefi' };
   const buttonType = buttonTypeMap[buttonId];
   if (!buttonType) return;
 
@@ -283,7 +283,7 @@ async function handleDailyButton(user, buttonId) {
     const nextButtons = [];
     if (buttonType !== 'deep') nextButtons.push({ id: 'daily_deep', title: 'J\'approfondis' });
     if (buttonType !== 'example') nextButtons.push({ id: 'daily_example', title: 'Exemple concret' });
-    if (buttonType !== 'next') nextButtons.push({ id: 'daily_next', title: 'Notion suivante' });
+    if (buttonType !== 'minidefi') nextButtons.push({ id: 'daily_minidefi', title: 'Mini-défi' });
     if (nextButtons.length > 0) {
       await whatsapp.sendButtons(user.whatsapp_id, 'Tu veux continuer à explorer ?', nextButtons);
     }
@@ -302,7 +302,7 @@ async function handleLimitReached(user, reason) {
       user.whatsapp_id,
       'Ta période d\'essai de 7 jours est terminée.\n\n' +
       'Pour continuer ton parcours :\n\n' +
-      'Pro — 6,99 €/mois (parcours complet, actu, outils, prompts)\n' +
+      'Pro — 6,99 €/mois (parcours qui s\'enrichit en continu, actu, outils, prompts)\n' +
       'Sans engagement, tu annules quand tu veux.',
       [{ id: 'plan_pro', title: 'Pro 6,99/mois' }],
       null,

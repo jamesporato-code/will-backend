@@ -402,10 +402,14 @@ async function generateDailyContent(userContext = {}) {
  */
 async function generateDailyFollowup(buttonType, dailyContent, userContext = {}) {
   try {
+    const dailyExtract = (dailyContent || '').replace(/"/g, '\\"').substring(0, 500);
+    const lvl = userContext.level || 'débutant';
+    const job = userContext.job || 'général';
+
     const prompts = {
-      deep: "L'utilisateur a reçu ce message quotidien :\n\"" + (dailyContent || '').replace(/"/g, '\\"').substring(0, 500) + "\"\n\nIl a cliqué \"J'approfondis\". Génère une explication plus détaillée. 100-200 mots, concret, adapté au niveau " + (userContext.level || 'débutant') + " et métier " + (userContext.job || 'général') + ". Texte brut WhatsApp, 2-3 emojis max.",
-      example: "L'utilisateur a reçu ce message quotidien :\n\"" + (dailyContent || '').replace(/"/g, '\\"').substring(0, 500) + "\"\n\nIl a cliqué \"Exemple concret\". Donne un exemple pratique lié au métier " + (userContext.job || 'général') + ". 80-150 mots, prompt à copier-coller si pertinent. Texte brut WhatsApp, 2-3 emojis max.",
-      next: "L'utilisateur a reçu ce message quotidien :\n\"" + (dailyContent || '').replace(/"/g, '\\"').substring(0, 500) + "\"\n\nIl a cliqué \"Notion suivante\". Génère une NOUVELLE notion/astuce IA différente. 80-150 mots, adapté au niveau " + (userContext.level || 'débutant') + " et métier " + (userContext.job || 'général') + ". Texte brut WhatsApp, 2-3 emojis max."
+      deep: "L'utilisateur a reçu ce message quotidien :\n\"" + dailyExtract + "\"\n\nIl a cliqué \"J'approfondis\". Génère une explication plus détaillée. 100-200 mots, concret, adapté au niveau " + lvl + " et métier " + job + ". Texte brut WhatsApp, 2-3 emojis max.",
+      example: "L'utilisateur a reçu ce message quotidien :\n\"" + dailyExtract + "\"\n\nIl a cliqué \"Exemple concret\". Donne un exemple pratique lié au métier " + job + ". 80-150 mots, prompt à copier-coller si pertinent. Texte brut WhatsApp, 2-3 emojis max.",
+      minidefi: "L'utilisateur a reçu ce message quotidien :\n\"" + dailyExtract + "\"\n\nIl a cliqué \"Mini-défi\". Donne UN exercice actionnable de 2 minutes max, lié au contenu et au métier " + job + ". Format strict :\n1. Le défi en 1-2 phrases (verbe d'action en tête)\n2. Comment savoir que c'est réussi (1 critère concret)\n3. Bonus / variante (1 phrase)\n\n80-120 mots, ton mentor pro qui pousse à passer à l'action, niveau " + lvl + ". Texte brut WhatsApp, 1-2 emojis max."
     };
 
     const prompt = prompts[buttonType] || prompts.deep;

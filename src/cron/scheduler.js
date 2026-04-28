@@ -8,16 +8,16 @@
 //   J6     : aperçu actu IA + teaser d'un prompt utile
 //   J7     : récap de la semaine + invitation à passer Pro
 //
-// Pro — parcours complet :
+// Pro — parcours qui s'enrichit en continu :
 //   Lundi → Samedi : prochaine session du module courant
 //   Dimanche       : récap hebdo
-//   Quand les 10 modules sont terminés : rotation hebdo
+//   Quand tous les modules sont terminés : rotation hebdo
 //     Lun/Mer/Ven : actu IA
 //     Mar/Jeu/Sam : outil du jour
 //     Dim         : récap
 //
 // Crons :
-//   - Toutes les heures : envoi aux users dont preferred_hour matche l'heure Paris
+//   - Toutes les 15 min : envoi aux users dont preferred_hour+minute matchent Paris
 //   - 10h Paris : relances trial (J5/J6/J7/J14)
 //   - Minuit Paris : reset compteur quotidien
 // ============================================
@@ -32,15 +32,23 @@ const { cacheResponse } = require('../services/redis');
 const { getCurrentSession } = require('../services/modules');
 
 function startDailyCron() {
-  // Toutes les heures : envoi aux users dont l'heure préférée correspond
-  cron.schedule('0 * * * *', async () => {
+  // Toutes les 15 minutes : envoi aux users dont l'heure+minute préférée correspond
+  cron.schedule('*/15 * * * *', async () => {
     const now = new Date();
     const parisHour = parseInt(
       now.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', hour12: false }),
       10
     );
-    logger.info('Cron horaire : vérification pour ' + parisHour + 'h');
-    await sendDailyMessages(parisHour);
+    const parisMinute = parseInt(
+      now.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', minute: '2-digit' }),
+      10
+    );
+    // Arrondi au quart d'heure le plus proche pour matcher 0/15/30/45
+    const slotMinute = [0, 15, 30, 45].reduce((prev, curr) =>
+      Math.abs(curr - parisMinute) < Math.abs(prev - parisMinute) ? curr : prev
+    );
+    logger.info('Cron 15min : vérification pour ' + parisHour + 'h' + (slotMinute < 10 ? '0' + slotMinute : slotMinute));
+    await sendDailyMessages(parisHour, slotMinute);
   }, { timezone: 'Europe/Paris' });
 
   // Cron relances trial : tous les jours à 10h Paris
@@ -61,13 +69,13 @@ function startDailyCron() {
     }
   }, { timezone: 'Europe/Paris' });
 
-  logger.info('Crons planifiés : horaire + trial reminders (10h) + reset compteur (minuit)');
+  logger.info('Crons planifiés : 15min + trial reminders (10h) + reset compteur (minuit)');
 }
 
 // ============================================
 // DISPATCH HORAIRE — appelé par le cron
 // ============================================
-async function sendDailyMessages(currentHour) {
+async function sendDailyMessages(currentHour, currentMinute = 0) {
   try {
     const usersResult = await query(
       `SELECT id FROM users
@@ -75,12 +83,14 @@ async function sendDailyMessages(currentHour) {
        AND plan IN ('trial', 'pro')
        AND (plan != 'trial' OR created_at > NOW() - INTERVAL '7 days')
        AND daily_opt_in != false
-       AND COALESCE(preferred_hour, 8) = $1`,
-      [currentHour]
+       AND COALESCE(preferred_hour, 8) = $1
+       AND COALESCE(preferred_minute, 0) = $2`,
+      [currentHour, currentMinute]
     );
 
     const ids = usersResult.rows.map(r => r.id);
-    logger.info(ids.length + ' utilisateurs à notifier pour ' + currentHour + 'h');
+    const slotLabel = currentHour + 'h' + (currentMinute < 10 ? '0' + currentMinute : currentMinute);
+    logger.info(ids.length + ' utilisateurs à notifier pour ' + slotLabel);
 
     for (const userId of ids) {
       const result = await sendDailyForUser(userId);
@@ -175,7 +185,7 @@ async function sendTrialDaily(user, opts = {}) {
       [
         { id: 'daily_deep', title: 'J\'approfondis' },
         { id: 'daily_example', title: 'Exemple concret' },
-        { id: 'daily_next', title: 'Notion suivante' },
+        { id: 'daily_minidefi', title: 'Mini-défi' },
       ],
       null,
       'Module 1 · Session ' + trialDay + '/5'
@@ -221,10 +231,10 @@ async function sendTrialDaily(user, opts = {}) {
   if (trialDay === 7) {
     const recap = await contentTypes.generateRecapHebdo(user);
     const fallbackBody = skipGreet
-      ? 'Ton essai se termine demain. Tu as découvert le Module 1 (Introduction à l\'IA). Pour continuer (Modules 2 à 10, actu, outils, prompts), passe Pro à 6,99 €/mois.'
-      : greet + ' Ton essai se termine demain. Tu as découvert le Module 1 (Introduction à l\'IA). Pour continuer (Modules 2 à 10, actu, outils, prompts), passe Pro à 6,99 €/mois.';
+      ? 'Ton essai se termine demain. Tu as découvert le Module 1 (Introduction à l\'IA). Pour continuer le parcours qui s\'enrichit en continu (nouveaux modules, actu, outils, prompts), passe Pro à 6,99 €/mois.'
+      : greet + ' Ton essai se termine demain. Tu as découvert le Module 1 (Introduction à l\'IA). Pour continuer le parcours qui s\'enrichit en continu (nouveaux modules, actu, outils, prompts), passe Pro à 6,99 €/mois.';
     const body = recap
-      ? recap + '\n\nDemain ton essai se termine. Pour continuer le parcours (Modules 2 à 10), passe Pro à 6,99 €/mois.'
+      ? recap + '\n\nDemain ton essai se termine. Pour continuer le parcours qui s\'enrichit en continu, passe Pro à 6,99 €/mois.'
       : fallbackBody;
 
     await whatsapp.sendButtons(
@@ -245,7 +255,7 @@ async function sendTrialDaily(user, opts = {}) {
 }
 
 // ============================================
-// PRO — parcours complet + rotation post-parcours
+// PRO — parcours évolutif + rotation post-parcours
 // ============================================
 async function sendProDaily(user, opts = {}) {
   const name = user.display_name?.split(' ')[0] || '';
@@ -295,7 +305,7 @@ async function sendProDaily(user, opts = {}) {
     [
       { id: 'daily_deep', title: 'J\'approfondis' },
       { id: 'daily_example', title: 'Exemple concret' },
-      { id: 'daily_next', title: 'Notion suivante' },
+      { id: 'daily_minidefi', title: 'Mini-défi' },
     ],
     null,
     sessionLabel
@@ -339,7 +349,7 @@ async function sendProRotation(user, prefix, jsDay) {
     [
       { id: 'daily_deep', title: 'J\'approfondis' },
       { id: 'daily_example', title: 'Exemple concret' },
-      { id: 'daily_next', title: 'Aller plus loin' },
+      { id: 'daily_minidefi', title: 'Mini-défi' },
     ],
     null,
     footer
@@ -409,7 +419,7 @@ async function handleProMenuChoice(user, buttonId) {
     [
       { id: 'daily_deep', title: 'J\'approfondis' },
       { id: 'daily_example', title: 'Exemple concret' },
-      { id: 'daily_next', title: 'Notion suivante' },
+      { id: 'daily_minidefi', title: 'Mini-défi' },
     ],
     null,
     footer
@@ -456,7 +466,7 @@ async function sendTrialReminders() {
     await sendReminderBatch(5, 6,
       (name) => (name ? 'Bonjour ' + name + '.' : 'Bonjour.') + '\n\n' +
         'Plus que 2 jours pour profiter de ton essai gratuit.\n\n' +
-        'Tu as commencé à découvrir l\'IA avec le Module 1. Pour débloquer les Modules 2 à 10 et continuer sans interruption, passe Pro.',
+        'Tu as commencé à découvrir l\'IA avec le Module 1. Pour continuer le parcours qui s\'enrichit en continu et ne pas perdre ton élan, passe Pro.',
       'trial_reminder_j5'
     );
 
@@ -470,7 +480,7 @@ async function sendTrialReminders() {
     await sendReminderBatch(7, 8,
       (name) => 'Ton essai gratuit est terminé.\n\n' +
         (name ? name + ', ' : '') +
-        'merci d\'avoir testé Will. Pour continuer à apprendre l\'IA au quotidien (parcours complet, actu, outils, prompts) :\n\n' +
+        'merci d\'avoir testé Will. Pour continuer à apprendre l\'IA au quotidien (parcours qui s\'enrichit en continu, actu, outils, prompts) :\n\n' +
         'Pro : 6,99 €/mois, sans engagement.',
       'trial_reminder_j7'
     );

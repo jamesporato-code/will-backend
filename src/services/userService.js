@@ -50,7 +50,7 @@ async function incrementDailyCount(userId) {
 async function updateProfile(userId, updates) {
   const allowed = ['name', 'display_name', 'job', 'level', 'interests', 'plan',
     'onboarding_complete', 'onboarding_step', 'stripe_customer_id',
-    'stripe_subscription_id', 'preferred_hour',
+    'stripe_subscription_id', 'preferred_hour', 'preferred_minute',
     'ia_interest', 'ia_interest_other', 'daily_opt_in',
     'current_module', 'module_progress', 'streak', 'secondary_jobs'];
 

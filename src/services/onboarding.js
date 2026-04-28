@@ -266,64 +266,50 @@ async function handleOnboarding(user, parsed) {
         'Tu peux toujours me poser des questions quand tu veux. Pour les réactiver plus tard, tape /daily.'
       );
       await delay(1500);
-      await sendRecapAndPlan(user, null);
+      await sendRecapAndPlan(user, null, null);
       return true;
     }
     await updateProfile(user.id, { daily_opt_in: true, onboarding_step: 8 });
     await whatsapp.sendText(user.whatsapp_id, 'Parfait. Tu recevras un message quotidien adapté à ton profil.');
     await delay(1000);
-    await whatsapp.sendText(user.whatsapp_id, 'Tu peux écrire ton heure préférée (ex : 8h30, 14h00) ou choisir dans la liste ci-dessous.');
-    await delay(1000);
     await askHour(user);
     return true;
   }
 
-  // STEP 8 : heure → recap + plan
+  // STEP 8 : choix de l'heure pile → étape minute
   if (step === 8) {
-    let hour = null;
-    if (parsed.listId?.startsWith('ob_hour_')) {
-      hour = parseInt(parsed.listId.replace('ob_hour_', ''), 10);
-    } else if (parsed.text) {
-      const text = parsed.text.trim().toLowerCase();
-      let match;
-      match = text.match(/^(\d{1,2})\s*h\s*(\d{0,2})$/);
-      if (!match) match = text.match(/^(\d{1,2})\s*:\s*(\d{0,2})$/);
-      if (!match) {
-        match = text.match(/^(\d{1,2})$/);
-        if (match) match[2] = '0';
-      }
-      if (match) {
-        const h = parseInt(match[1], 10);
-        const m = parseInt(match[2] || '0', 10);
-        if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
-          // Pour l'instant on n'envoie qu'à l'heure pile → on arrondit au plus proche
-          // et on prévient l'utilisateur si on a dû arrondir.
-          let rounded = m >= 30 ? h + 1 : h;
-          if (rounded > 23) rounded = 23;
-          hour = rounded;
-          if (m !== 0) {
-            await whatsapp.sendText(
-              user.whatsapp_id,
-              'J\'envoie le message quotidien à l\'heure pile pour l\'instant. J\'ai retenu ' + rounded + 'h00 (au plus proche de ' + h + 'h' + (m < 10 ? '0' + m : m) + ').'
-            );
-            await delay(800);
-          }
-        }
-      }
-    }
-
-    if (hour === null) {
-      await whatsapp.sendText(
-        user.whatsapp_id,
-        'Je n\'ai pas reconnu l\'heure. Écris-la au format 8h30 ou 14h00, ou choisis dans la liste ci-dessous.'
-      );
+    if (!parsed.listId?.startsWith('ob_hour_')) {
+      await whatsapp.sendText(user.whatsapp_id, 'Choisis ton heure dans la liste ci-dessous.');
       await delay(500);
       await askHour(user);
       return true;
     }
+    const hour = parseInt(parsed.listId.replace('ob_hour_', ''), 10);
+    if (isNaN(hour) || hour < 0 || hour > 23) {
+      await askHour(user);
+      return true;
+    }
+    await updateProfile(user.id, { preferred_hour: hour, onboarding_step: 81 });
+    await delay(500);
+    await askMinute(user, hour);
+    return true;
+  }
 
-    await updateProfile(user.id, { preferred_hour: hour, onboarding_step: 9 });
-    await sendRecapAndPlan(user, hour);
+  // STEP 81 : choix de la minute → recap + plan
+  if (step === 81) {
+    if (!parsed.listId?.startsWith('ob_minute_')) {
+      await whatsapp.sendText(user.whatsapp_id, 'Choisis la minute dans la liste ci-dessous.');
+      await delay(500);
+      await askMinute(user, user.preferred_hour);
+      return true;
+    }
+    const minute = parseInt(parsed.listId.replace('ob_minute_', ''), 10);
+    if (isNaN(minute) || ![0, 15, 30, 45].includes(minute)) {
+      await askMinute(user, user.preferred_hour);
+      return true;
+    }
+    await updateProfile(user.id, { preferred_minute: minute, onboarding_step: 9 });
+    await sendRecapAndPlan(user, user.preferred_hour, minute);
     return true;
   }
 
@@ -419,30 +405,65 @@ async function askConsent(user) {
 }
 
 async function askHour(user) {
+  // Étape 1/2 : choix de l'heure pile (24 valeurs réparties en 3 sections de ≤10 lignes)
   await whatsapp.sendList(
     user.whatsapp_id,
     'À quelle heure souhaites-tu recevoir ton message quotidien ?',
-    'Choisir mon heure',
+    'Choisir l\'heure',
     [
-      { title: 'Matin', rows: [
-        { id: 'ob_hour_7', title: '7h00', description: 'Tôt le matin' },
-        { id: 'ob_hour_8', title: '8h00', description: 'Début de journée' },
-        { id: 'ob_hour_9', title: '9h00', description: 'En arrivant au travail' },
-        { id: 'ob_hour_10', title: '10h00', description: 'Milieu de matinée' },
-        { id: 'ob_hour_12', title: '12h00', description: 'Pause déjeuner' },
+      { title: 'Matin (5h-12h)', rows: [
+        { id: 'ob_hour_5', title: '5h', description: 'Très tôt' },
+        { id: 'ob_hour_6', title: '6h', description: 'Lever' },
+        { id: 'ob_hour_7', title: '7h', description: 'Tôt' },
+        { id: 'ob_hour_8', title: '8h', description: 'Début de journée' },
+        { id: 'ob_hour_9', title: '9h', description: 'Au travail' },
+        { id: 'ob_hour_10', title: '10h', description: 'Milieu de matinée' },
+        { id: 'ob_hour_11', title: '11h', description: 'Fin de matinée' },
+        { id: 'ob_hour_12', title: '12h', description: 'Pause déjeuner' },
       ] },
-      { title: 'Après-midi / Soir', rows: [
-        { id: 'ob_hour_14', title: '14h00', description: 'Après-midi' },
-        { id: 'ob_hour_16', title: '16h00', description: 'Fin d\'après-midi' },
-        { id: 'ob_hour_18', title: '18h00', description: 'Fin de journée' },
-        { id: 'ob_hour_20', title: '20h00', description: 'Soirée' },
-        { id: 'ob_hour_22', title: '22h00', description: 'Tard le soir' },
+      { title: 'Après-midi (13h-18h)', rows: [
+        { id: 'ob_hour_13', title: '13h', description: 'Début après-midi' },
+        { id: 'ob_hour_14', title: '14h', description: 'Reprise' },
+        { id: 'ob_hour_15', title: '15h', description: 'Milieu après-midi' },
+        { id: 'ob_hour_16', title: '16h', description: 'Goûter' },
+        { id: 'ob_hour_17', title: '17h', description: 'Fin de journée' },
+        { id: 'ob_hour_18', title: '18h', description: 'Sortie de bureau' },
+      ] },
+      { title: 'Soirée (19h-4h)', rows: [
+        { id: 'ob_hour_19', title: '19h', description: 'Début de soirée' },
+        { id: 'ob_hour_20', title: '20h', description: 'Soirée' },
+        { id: 'ob_hour_21', title: '21h', description: 'Après le dîner' },
+        { id: 'ob_hour_22', title: '22h', description: 'Tard' },
+        { id: 'ob_hour_23', title: '23h', description: 'Avant de dormir' },
+        { id: 'ob_hour_0', title: '0h', description: 'Minuit' },
+        { id: 'ob_hour_1', title: '1h', description: 'Nuit' },
+        { id: 'ob_hour_2', title: '2h', description: 'Nuit' },
+        { id: 'ob_hour_3', title: '3h', description: 'Nuit' },
+        { id: 'ob_hour_4', title: '4h', description: 'Aube' },
       ] },
     ]
   );
 }
 
-async function sendRecapAndPlan(user, hour) {
+async function askMinute(user, hour) {
+  // Étape 2/2 : choix de la minute (0/15/30/45)
+  const hLabel = hour + 'h';
+  await whatsapp.sendList(
+    user.whatsapp_id,
+    'À quelle minute exactement, autour de ' + hLabel + ' ?',
+    'Choisir la minute',
+    [
+      { title: 'Quart d\'heure', rows: [
+        { id: 'ob_minute_0', title: hLabel + '00', description: 'Heure pile' },
+        { id: 'ob_minute_15', title: hLabel + '15', description: 'Et quart' },
+        { id: 'ob_minute_30', title: hLabel + '30', description: 'Et demi' },
+        { id: 'ob_minute_45', title: hLabel + '45', description: 'Moins le quart' },
+      ] },
+    ]
+  );
+}
+
+async function sendRecapAndPlan(user, hour, minute) {
   const result = await query('SELECT job, secondary_jobs, ia_interest, ia_interest_other FROM users WHERE id = $1', [user.id]);
   const row = result.rows[0] || {};
   const primaryJob = row.job || 'Non précisé';
@@ -460,7 +481,9 @@ async function sendRecapAndPlan(user, hour) {
     'Focus IA : ' + interestLabel,
   ];
   if (hour !== null && hour !== undefined) {
-    recapLines.push('Message quotidien : ' + hour + 'h00');
+    const m = (minute === null || minute === undefined) ? 0 : minute;
+    const mPad = m < 10 ? '0' + m : '' + m;
+    recapLines.push('Message quotidien : ' + hour + 'h' + mPad);
   } else {
     recapLines.push('Messages quotidiens : désactivés');
   }
@@ -472,8 +495,8 @@ async function sendRecapAndPlan(user, hour) {
   await whatsapp.sendButtons(
     user.whatsapp_id,
     'Dernière étape — choisis ta formule.\n\n' +
-    '*Essai gratuit (7 jours)*\nDécouverte du Module 1 (Introduction à l\'IA), 5 sessions + un aperçu actu/prompt et un récap. 15 messages chat/jour.\n\n' +
-    '*Pro (6,99 €/mois)*\nParcours complet (10 modules), messages illimités, actu IA, outils et prompts du jour. Sans engagement.',
+    '*Essai gratuit (7 jours)*\nDécouverte du Module 1 (Introduction à l\'IA), 5 sessions + un aperçu actu/prompt et un récap.\n\n' +
+    '*Pro (6,99 €/mois)*\nParcours qui s\'enrichit en continu (nouveaux modules réguliers), actu IA, outils et prompts du jour. Sans engagement.',
     [
       { id: 'ob_plan_trial', title: 'Essai gratuit 7j' },
       { id: 'ob_plan_pro', title: 'Pro 6,99/mois' },
