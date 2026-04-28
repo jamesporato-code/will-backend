@@ -194,11 +194,9 @@ router.post('/', async (req, res) => {
     }
 
     // Texte libre hors-contexte → redirige vers le hub /menu (out-of-scope response Meta)
+    // Pas d'intro : le body du menu list dit déjà la même chose, on évite le doublon.
     if (parsed.text) {
-      await menu.showMainMenu(
-        user,
-        'Will fonctionne entièrement par boutons — pas besoin d\'écrire. Choisis ce que tu veux faire ci-dessous.'
-      );
+      await menu.showMainMenu(user);
       return;
     }
 
