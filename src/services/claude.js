@@ -453,6 +453,7 @@ async function generateMinidefiFeedback(minidefiText, userResponse, userContext 
       "RÈGLES STRICTES :\n" +
       "- Ton mentor pro, tutoiement, texte brut WhatsApp\n" +
       "- 1-2 emojis max\n" +
+      "- INTERDIT de commencer par une salutation ou formule d'accueil : pas de \"Salut\", \"Hey\", \"Bonjour\", \"Bravo\", \"Bien joué\", \"Top\", \"Génial\". La conversation est déjà active, le user vient d'écrire sa réponse — tu enchaînes DIRECTEMENT sur le feedback (commence par un verbe, un constat ou la phrase d'encouragement spécifique).\n" +
       "- Si la réponse n'a aucun lien avec le mini-défi (ex : météo, actu, question générale), réponds UNIQUEMENT : \"Ta réponse ne semble pas liée au mini-défi. Relis le défi ci-dessus et tente à nouveau, ou tape /menu pour autre chose.\" et rien d'autre.";
 
     const response = await anthropic.messages.create({
