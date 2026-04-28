@@ -68,7 +68,7 @@ function buildUserContext(user) {
 // TYPE A â Parcours structurÃ©
 // ============================================
 async function generateParcours(user) {
-  const session = getCurrentSession(user);
+  const session = await getCurrentSession(user);
   if (!session || session.done) {
     return {
       text: 'Felicitations ! Tu as termine tout le parcours Will ! Tu es maintenant un expert IA. Continue a me poser tes questions au quotidien.',
@@ -84,10 +84,10 @@ async function generateParcours(user) {
 
   const prompt = `Tu es Will, coach IA sur WhatsApp. Genere UNE SESSION de parcours structure.
 
-MODULE : ${mod.name} (${mod.id}/10)
+MODULE : ${mod.name} (position ${mod.position})
 SESSION : ${sessionIndex + 1}/${mod.sessions}
 SUJET : ${topic}
-PROGRESSION : ${progressPercent}% du module, ${overallPercent}% du parcours total
+PROGRESSION : ${progressPercent}% du module en cours
 
 PROFIL :
 ${buildUserContext(user)}
@@ -99,7 +99,7 @@ STRUCTURE OBLIGATOIRE (5 messages en 1) :
 2. La notion principale expliquee simplement (3-5 phrases)
 3. Un exemple concret dans le domaine de l'utilisateur
 4. Un defi pratique a faire (exercice actionnable)
-5. Teaser pour la prochaine session
+5. Teaser pour la prochaine session du module
 
 REGLES :
 - 150-250 mots total
@@ -115,7 +115,7 @@ REGLES :
       messages: [{ role: 'user', content: prompt }],
     });
     const text = strip(response.content.find(b => b.type === 'text')?.text || '');
-    const nextProgress = getNextProgress(user);
+    const nextProgress = await getNextProgress(user);
     return { text, nextProgress, session };
   } catch (err) {
     logger.error('Erreur generation parcours', { error: err.message, userId: user.id });
@@ -247,7 +247,7 @@ REGLES :
 // Recap hebdomadaire (samedi/dimanche)
 // ============================================
 async function generateRecapHebdo(user) {
-  const session = getCurrentSession(user);
+  const session = await getCurrentSession(user);
   const overallPercent = session?.overallPercent || 0;
   const moduleName = session?.module?.name || 'Parcours';
 

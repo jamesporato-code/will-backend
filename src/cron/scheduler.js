@@ -267,7 +267,7 @@ async function sendProDaily(user, opts = {}) {
   const jsDay = parisDate.getDay(); // 0=dim, 1=lun, ..., 6=sam
 
   // Vérifie si le parcours est terminé
-  const session = getCurrentSession(user);
+  const session = await getCurrentSession(user);
   const parcoursDone = !session || session.done === true;
 
   // Dimanche : récap (parcours en cours) ou rotation (parcours fini)
@@ -293,7 +293,7 @@ async function sendProDaily(user, opts = {}) {
   }
 
   const sessionLabel = result.session
-    ? 'Module ' + result.session.module.id + ' · Session ' + (result.session.sessionIndex + 1) + '/' + result.session.module.sessions
+    ? 'Module ' + result.session.module.position + ' · Session ' + (result.session.sessionIndex + 1) + '/' + result.session.module.sessions
     : 'Ton parcours Will';
 
   await cacheResponse('daily:' + user.id, result.text, 86400);
