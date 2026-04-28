@@ -294,7 +294,21 @@ async function handleOnboarding(user, parsed) {
       }
       if (match) {
         const h = parseInt(match[1], 10);
-        if (h >= 0 && h <= 23) hour = h;
+        const m = parseInt(match[2] || '0', 10);
+        if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+          // Pour l'instant on n'envoie qu'à l'heure pile → on arrondit au plus proche
+          // et on prévient l'utilisateur si on a dû arrondir.
+          let rounded = m >= 30 ? h + 1 : h;
+          if (rounded > 23) rounded = 23;
+          hour = rounded;
+          if (m !== 0) {
+            await whatsapp.sendText(
+              user.whatsapp_id,
+              'J\'envoie le message quotidien à l\'heure pile pour l\'instant. J\'ai retenu ' + rounded + 'h00 (au plus proche de ' + h + 'h' + (m < 10 ? '0' + m : m) + ').'
+            );
+            await delay(800);
+          }
+        }
       }
     }
 

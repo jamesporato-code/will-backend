@@ -150,9 +150,12 @@ async function sendTrialDaily(user, opts = {}) {
       : greet + ' Voici ta session du jour.';
 
     await cacheResponse('daily:' + user.id, result.text, 86400);
+    // Body sendButtons limité à 1024 chars côté Meta → on split en 2 messages.
+    await whatsapp.sendText(user.whatsapp_id, intro + '\n\n' + result.text);
+    await new Promise(r => setTimeout(r, 800));
     await whatsapp.sendButtons(
       user.whatsapp_id,
-      intro + '\n\n' + result.text,
+      'Que veux-tu faire ensuite ?',
       [
         { id: 'daily_deep', title: 'J\'approfondis' },
         { id: 'daily_example', title: 'Exemple concret' },
@@ -179,9 +182,14 @@ async function sendTrialDaily(user, opts = {}) {
       return await sendFallback(user, greet, 'actu generation failed');
     }
     await cacheResponse('daily:' + user.id, actu, 86400);
+    await whatsapp.sendText(
+      user.whatsapp_id,
+      greet + ' Aujourd\'hui un aperçu de ce que tu reçois en Pro : l\'actu IA du jour.\n\n' + actu
+    );
+    await new Promise(r => setTimeout(r, 800));
     await whatsapp.sendButtons(
       user.whatsapp_id,
-      greet + ' Aujourd\'hui un aperçu de ce que tu reçois en Pro : l\'actu IA du jour.\n\n' + actu,
+      'On creuse ?',
       [
         { id: 'daily_deep', title: 'J\'approfondis' },
         { id: 'plan_pro', title: 'Voir l\'offre Pro' },
@@ -258,9 +266,11 @@ async function sendProDaily(user, opts = {}) {
     : 'Ton parcours Will';
 
   await cacheResponse('daily:' + user.id, result.text, 86400);
+  await whatsapp.sendText(user.whatsapp_id, greet + '\n\n' + result.text);
+  await new Promise(r => setTimeout(r, 800));
   await whatsapp.sendButtons(
     user.whatsapp_id,
-    greet + '\n\n' + result.text,
+    'Que veux-tu faire ensuite ?',
     [
       { id: 'daily_deep', title: 'J\'approfondis' },
       { id: 'daily_example', title: 'Exemple concret' },
@@ -300,9 +310,11 @@ async function sendProRotation(user, greet, jsDay) {
   }
 
   await cacheResponse('daily:' + user.id, content, 86400);
+  await whatsapp.sendText(user.whatsapp_id, greet + '\n\n' + content);
+  await new Promise(r => setTimeout(r, 800));
   await whatsapp.sendButtons(
     user.whatsapp_id,
-    greet + '\n\n' + content,
+    'Que veux-tu faire ensuite ?',
     [
       { id: 'daily_deep', title: 'J\'approfondis' },
       { id: 'daily_example', title: 'Exemple concret' },
@@ -367,9 +379,11 @@ async function handleProMenuChoice(user, buttonId) {
   }
 
   await cacheResponse('daily:' + user.id, content, 86400);
+  await whatsapp.sendText(user.whatsapp_id, content);
+  await new Promise(r => setTimeout(r, 800));
   await whatsapp.sendButtons(
     user.whatsapp_id,
-    content,
+    'Que veux-tu faire ensuite ?',
     [
       { id: 'daily_deep', title: 'J\'approfondis' },
       { id: 'daily_example', title: 'Exemple concret' },
