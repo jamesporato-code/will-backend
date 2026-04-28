@@ -15,7 +15,7 @@ const userService = require('../services/userService');
 const { getUserStats } = require('../services/userService');
 const onboarding = require('../services/onboarding');
 const menu = require('../services/menu');
-const { getCachedResponse } = require('../services/redis');
+const { getCachedResponse, cacheResponse } = require('../services/redis');
 const { handleProMenuChoice, sendDailyForUser } = require('../cron/scheduler');
 const Stripe = require('stripe');
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -174,13 +174,26 @@ router.post('/', async (req, res) => {
       return;
     }
 
+    // Mini-défi : boutons de fin (C'est fait / Je passe)
+    if (parsed.buttonId === 'minidefi_done' || parsed.buttonId === 'minidefi_skip') {
+      await handleMinidefiButton(user, parsed.buttonId);
+      return;
+    }
+
     // Boutons de contenu (topic + daily)
     if (parsed.buttonId?.startsWith('topic_') || parsed.buttonId?.startsWith('daily_')) {
       await handleContentButton(user, parsed);
       return;
     }
 
-    // Texte libre → redirige vers le hub /menu (Will fonctionne par boutons)
+    // Mini-défi : free-text autorisé UNIQUEMENT si user.free_text_context = 'awaiting_minidefi'
+    // Conformité Meta : fenêtre de free-text scopée à un contexte pédagogique précis.
+    if (parsed.text && user.free_text_context === 'awaiting_minidefi') {
+      await handleMinidefiResponse(user, parsed.text);
+      return;
+    }
+
+    // Texte libre hors-contexte → redirige vers le hub /menu (out-of-scope response Meta)
     if (parsed.text) {
       await menu.showMainMenu(
         user,
@@ -278,8 +291,23 @@ async function handleDailyButton(user, buttonId) {
     await userService.saveMessage(user.id, 'assistant', followup, 'daily');
     await userService.incrementDailyCount(user.id);
     await whatsapp.sendText(user.whatsapp_id, followup);
-
     await new Promise(r => setTimeout(r, 1000));
+
+    if (buttonType === 'minidefi') {
+      // v3.5 : ouvrir une fenêtre de free-text scopée pour la réponse au défi
+      await cacheResponse('minidefi:' + user.id, followup, 86400);
+      await userService.updateProfile(user.id, { free_text_context: 'awaiting_minidefi' });
+      await whatsapp.sendButtons(
+        user.whatsapp_id,
+        'Écris-moi ta réponse au défi quand tu as fini — je te ferai un retour personnalisé. Sinon :',
+        [
+          { id: 'minidefi_done', title: 'C\'est fait' },
+          { id: 'minidefi_skip', title: 'Je passe' },
+        ]
+      );
+      return;
+    }
+
     const nextButtons = [];
     if (buttonType !== 'deep') nextButtons.push({ id: 'daily_deep', title: 'J\'approfondis' });
     if (buttonType !== 'example') nextButtons.push({ id: 'daily_example', title: 'Exemple concret' });
@@ -294,6 +322,42 @@ async function handleDailyButton(user, buttonId) {
       'Une erreur s\'est produite. Tu peux me poser une question directement.'
     );
   }
+}
+
+async function handleMinidefiResponse(user, text) {
+  const minidefi = await getCachedResponse('minidefi:' + user.id);
+  if (!minidefi) {
+    await userService.updateProfile(user.id, { free_text_context: null });
+    await menu.showMainMenu(user, 'Le mini-défi n\'est plus actif. Reviens via le menu.');
+    return;
+  }
+  const userContext = { level: user.level, job: user.job };
+  const feedback = await claude.generateMinidefiFeedback(minidefi, text, userContext);
+  await userService.saveMessage(user.id, 'user', text, 'minidefi');
+  await userService.saveMessage(user.id, 'assistant', feedback, 'minidefi');
+  await userService.incrementDailyCount(user.id);
+  await whatsapp.sendText(user.whatsapp_id, feedback);
+  await userService.updateProfile(user.id, { free_text_context: null });
+  await new Promise(r => setTimeout(r, 1000));
+  await whatsapp.sendButtons(user.whatsapp_id, 'On continue ?', [
+    { id: 'daily_deep', title: 'J\'approfondis' },
+    { id: 'daily_example', title: 'Exemple concret' },
+    { id: 'menu_hub', title: 'Retour menu' },
+  ]);
+}
+
+async function handleMinidefiButton(user, buttonId) {
+  await userService.updateProfile(user.id, { free_text_context: null });
+  const text = buttonId === 'minidefi_done'
+    ? 'Bien joué d\'avoir fait l\'exercice. Quand tu veux un retour personnalisé sur ta réponse, écris-la-moi pendant qu\'un mini-défi est actif.'
+    : 'Pas grave, on y revient quand tu veux.';
+  await whatsapp.sendText(user.whatsapp_id, text);
+  await new Promise(r => setTimeout(r, 800));
+  await whatsapp.sendButtons(user.whatsapp_id, 'On continue ?', [
+    { id: 'daily_deep', title: 'J\'approfondis' },
+    { id: 'daily_example', title: 'Exemple concret' },
+    { id: 'menu_hub', title: 'Retour menu' },
+  ]);
 }
 
 async function handleLimitReached(user, reason) {

@@ -53,7 +53,8 @@ async function updateProfile(userId, updates) {
     'stripe_subscription_id', 'preferred_hour', 'preferred_minute',
     'ia_interest', 'ia_interest_other', 'daily_opt_in',
     'current_module', 'module_progress', 'streak', 'secondary_jobs',
-    'ia_frequency', 'ia_goal', 'ia_time_budget', 'menu_quiz_step'];
+    'ia_frequency', 'ia_goal', 'ia_time_budget', 'menu_quiz_step',
+    'free_text_context'];
 
   const fields = Object.keys(updates).filter(k => allowed.includes(k));
   if (fields.length === 0) return;

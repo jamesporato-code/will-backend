@@ -330,6 +330,7 @@ router.post('/reset-user/:id', adminAuth, async (req, res) => {
         ia_goal = NULL,
         ia_time_budget = NULL,
         menu_quiz_step = 0,
+        free_text_context = NULL,
         daily_message_count = 0,
         plan = 'trial',
         created_at = NOW(),
@@ -428,9 +429,7 @@ router.post('/migrate', adminAuth, async (req, res) => {
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS ia_goal TEXT",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS ia_time_budget INTEGER",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS menu_quiz_step INTEGER DEFAULT 0",
-      "ALTER TABLE users ALTER COLUMN current_module DROP DEFAULT",
-      "ALTER TABLE users ALTER COLUMN current_module TYPE INTEGER USING 1",
-      "ALTER TABLE users ALTER COLUMN current_module SET DEFAULT 1",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS free_text_context TEXT",
       `CREATE TABLE IF NOT EXISTS modules (
         id SERIAL PRIMARY KEY,
         slug TEXT UNIQUE NOT NULL,

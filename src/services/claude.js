@@ -432,4 +432,45 @@ async function generateDailyFollowup(buttonType, dailyContent, userContext = {})
   }
 }
 
-module.exports = { generateResponse, generateDailyContent, generateDailyFollowup };
+/**
+ * Valider la réponse écrite d'un user à un mini-défi.
+ * Scope strict : feedback ciblé sur la réponse + invitation à passer à l'action.
+ * Refuse poliment les requêtes hors-sujet (conformité Meta : pas de chatbot général).
+ */
+async function generateMinidefiFeedback(minidefiText, userResponse, userContext = {}) {
+  try {
+    const lvl = userContext.level || 'débutant';
+    const job = userContext.job || 'général';
+    const challenge = (minidefiText || '').replace(/"/g, '\\"').substring(0, 600);
+    const answer = (userResponse || '').replace(/"/g, '\\"').substring(0, 800);
+
+    const prompt = "Mini-défi envoyé à l'utilisateur (niveau " + lvl + ", métier " + job + ") :\n\"" + challenge + "\"\n\n" +
+      "Réponse écrite du user :\n\"" + answer + "\"\n\n" +
+      "Donne-lui un feedback CIBLÉ sur sa réponse, en 60-100 mots :\n" +
+      "1. Une phrase d'encouragement spécifique (mentionne un point précis qu'il a écrit)\n" +
+      "2. 1-2 conseils concrets pour aller plus loin (lié au métier " + job + ")\n" +
+      "3. Une micro-action de 2 min max à faire dès maintenant\n\n" +
+      "RÈGLES STRICTES :\n" +
+      "- Ton mentor pro, tutoiement, texte brut WhatsApp\n" +
+      "- 1-2 emojis max\n" +
+      "- Si la réponse n'a aucun lien avec le mini-défi (ex : météo, actu, question générale), réponds UNIQUEMENT : \"Ta réponse ne semble pas liée au mini-défi. Relis le défi ci-dessus et tente à nouveau, ou tape /menu pour autre chose.\" et rien d'autre.";
+
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 350,
+      temperature: 0.5,
+      system: "Tu es Will, coach IA sur WhatsApp. Tu valides UNIQUEMENT des réponses à des mini-défis pédagogiques précis. Tu refuses poliment toute autre demande, sans jamais agir comme un assistant général.",
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const textBlock = response.content.find(b => b.type === 'text');
+    let content = textBlock ? textBlock.text : "Bien joué d'avoir tenté. Reprends le mini-défi quand tu veux.";
+    content = stripMarkdown(content);
+    return content;
+  } catch (err) {
+    logger.error('Erreur génération minidefi feedback', { error: err.message });
+    return "Bien joué d'avoir tenté. Reprends le mini-défi quand tu veux.";
+  }
+}
+
+module.exports = { generateResponse, generateDailyContent, generateDailyFollowup, generateMinidefiFeedback };
