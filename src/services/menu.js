@@ -231,7 +231,9 @@ async function handleMenuButton(user, buttonId) {
     await showMainMenu(user);
     return true;
   }
-  if (buttonId === 'menu_today') {
+  if (buttonId === 'menu_today' || buttonId === 'menu_parcours') {
+    // v3.6 : menu_parcours rejoue le daily du jour (jamais de progression manuelle).
+    // La progression du parcours ne se fait QUE via le cron ou le 1er daily post-onboarding.
     await replayTodayDaily(user);
     return true;
   }
@@ -243,7 +245,7 @@ async function handleMenuButton(user, buttonId) {
     await startQuiz(user);
     return true;
   }
-  return false; // laisse les autres menu_* (parcours/actu/outil/prompt/account) passer
+  return false; // laisse les autres menu_* (actu/outil/prompt/account) passer
 }
 
 module.exports = {
