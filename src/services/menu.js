@@ -25,8 +25,7 @@ async function showMainMenu(user, intro = null) {
     { id: 'menu_prompt', title: 'Prompt du jour', description: 'Un prompt à copier' },
   ];
   const trialRows = [
-    { id: 'menu_today', title: 'Voir le message du jour', description: 'Relire ton dernier daily' },
-    { id: 'menu_parcours', title: 'Ma session du jour', description: 'Module 1 — Introduction' },
+    { id: 'menu_parcours', title: 'Ma session du jour', description: 'Relire ta session du jour' },
   ];
 
   const sections = [
