@@ -95,6 +95,10 @@ router.post('/', async (req, res) => {
         const handled = await onboarding.handleOnboarding(user, parsed);
         if (handled) return;
       }
+      // Clear toute fenêtre free-text en cours (ex : mini-défi) avant d'ouvrir le menu
+      if (user.free_text_context) {
+        await userService.updateProfile(user.id, { free_text_context: null });
+      }
       await menu.showMainMenu(user);
       return;
     }
@@ -295,13 +299,9 @@ async function handleDailyButton(user, buttonId) {
       // v3.5 : ouvrir une fenêtre de free-text scopée pour la réponse au défi
       await cacheResponse('minidefi:' + user.id, followup, 86400);
       await userService.updateProfile(user.id, { free_text_context: 'awaiting_minidefi' });
-      await whatsapp.sendButtons(
+      await whatsapp.sendText(
         user.whatsapp_id,
-        'Écris-moi ta réponse au défi quand tu as fini — je te ferai un retour personnalisé. Sinon :',
-        [
-          { id: 'minidefi_done', title: 'C\'est fait' },
-          { id: 'minidefi_skip', title: 'Je passe' },
-        ]
+        'Écris-moi ta réponse au défi ici — je te ferai un retour personnalisé.\n\n(Ou tape /menu pour passer à autre chose.)'
       );
       return;
     }
