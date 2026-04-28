@@ -452,6 +452,37 @@ router.post('/migrate', adminAuth, async (req, res) => {
         UNIQUE(module_id, position)
       )`,
       "CREATE INDEX IF NOT EXISTS idx_module_sessions_module ON module_sessions(module_id, position)",
+      `CREATE TABLE IF NOT EXISTS tool_cards (
+        id SERIAL PRIMARY KEY,
+        slug TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        category TEXT,
+        description TEXT,
+        url TEXT,
+        why_it_matters TEXT,
+        how_to_use TEXT,
+        target_level TEXT,
+        target_jobs JSONB DEFAULT '[]'::jsonb,
+        active BOOLEAN DEFAULT true,
+        position INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS prompt_cards (
+        id SERIAL PRIMARY KEY,
+        slug TEXT UNIQUE NOT NULL,
+        title TEXT NOT NULL,
+        category TEXT,
+        use_case TEXT,
+        prompt_template TEXT NOT NULL,
+        example_output TEXT,
+        target_level TEXT,
+        target_jobs JSONB DEFAULT '[]'::jsonb,
+        active BOOLEAN DEFAULT true,
+        position INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )`,
     ];
     const results = [];
     for (const sql of statements) {
@@ -465,8 +496,17 @@ router.post('/migrate', adminAuth, async (req, res) => {
 
     // Seed des modules par défaut si la table est vide
     const seedResult = await seedModulesIfEmpty();
-    logger.info('DB migration run by admin', { results, seed: seedResult });
-    res.json({ success: true, results, seed: seedResult });
+    const seedToolsResult = await seedToolCardsIfEmpty();
+    const seedPromptsResult = await seedPromptCardsIfEmpty();
+    logger.info('DB migration run by admin', {
+      results, seed: seedResult, seedTools: seedToolsResult, seedPrompts: seedPromptsResult
+    });
+    res.json({
+      success: true, results,
+      seed: seedResult,
+      seedTools: seedToolsResult,
+      seedPrompts: seedPromptsResult,
+    });
   } catch (err) {
     logger.error('Admin migrate error', { error: err.message });
     res.status(500).json({ error: err.message });
@@ -727,6 +767,454 @@ router.put('/sessions/:id', adminAuth, async (req, res) => {
     res.json({ session: result.rows[0] });
   } catch (err) {
     logger.error('Admin PUT /sessions/:id error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================
+// SEED des fiches Outils par défaut
+// ============================================
+const DEFAULT_TOOL_CARDS = [
+  {
+    slug: 'chatgpt', name: 'ChatGPT', category: 'Généraliste',
+    description: "L'assistant IA grand public d'OpenAI. Excellente compréhension générale, intégration vocale et image, écosystème de GPTs personnalisés.",
+    url: 'https://chat.openai.com',
+    why_it_matters: "C'est l'IA la plus connue, donc parfaite pour démarrer. Plus de 200M d'utilisateurs : la qualité du modèle et l'écosystème (vision, voix, GPTs, code) en font un outil polyvalent du quotidien.",
+    how_to_use: "1. Crée un compte gratuit sur chat.openai.com\n2. Active le mode vocal pour des conversations naturelles\n3. Explore les GPTs spécialisés dans le store",
+    target_level: 'beginner',
+  },
+  {
+    slug: 'claude', name: 'Claude', category: 'Analyse & rédaction',
+    description: "L'IA d'Anthropic, particulièrement forte sur l'analyse de longs documents, le raisonnement nuancé et la rédaction de qualité.",
+    url: 'https://claude.ai',
+    why_it_matters: "Claude excelle là où ChatGPT s'essouffle : documents de 100+ pages, raisonnement multi-étapes, écriture qui ne sonne pas robotique. Indispensable pour quiconque travaille avec du texte long.",
+    how_to_use: "1. Inscris-toi sur claude.ai (gratuit)\n2. Drop un PDF complet ou colle un long texte → demande-lui un résumé structuré\n3. Utilise Claude Projects pour donner du contexte permanent à tes conversations",
+    target_level: 'beginner',
+  },
+  {
+    slug: 'perplexity', name: 'Perplexity', category: 'Recherche web',
+    description: "Le moteur de recherche augmenté à l'IA. Cite ses sources, explore le web en temps réel, parfait pour la veille et le fact-checking.",
+    url: 'https://perplexity.ai',
+    why_it_matters: "Là où ChatGPT et Claude inventent parfois, Perplexity cite. Idéal pour de la recherche pro où tu dois pouvoir vérifier l'info ou la citer dans un rapport.",
+    how_to_use: "1. Pose ta question directement, comme à Google\n2. Active le mode \"Pro\" pour des recherches plus profondes\n3. Clique sur les sources citées pour les vérifier",
+    target_level: 'beginner',
+  },
+  {
+    slug: 'mistral-le-chat', name: 'Mistral Le Chat', category: 'Alternative française',
+    description: "Le ChatGPT français. Mistral propose un assistant IA souverain, gratuit, avec exécution de code et génération d'images intégrées.",
+    url: 'https://chat.mistral.ai',
+    why_it_matters: "Souveraineté des données, hébergement européen, modèle open-weight de qualité. Pour qui veut éviter d'envoyer ses données aux US tout en gardant un outil compétitif.",
+    how_to_use: "1. Compte gratuit sur chat.mistral.ai\n2. Active le mode \"Flash Answers\" pour des réponses ultra-rapides\n3. Utilise le canvas pour itérer sur du code ou des docs",
+    target_level: 'beginner',
+  },
+  {
+    slug: 'midjourney', name: 'Midjourney', category: 'Image',
+    description: "Le générateur d'images IA de référence pour la qualité artistique. Disponible sur Discord et sur le web depuis 2024.",
+    url: 'https://midjourney.com',
+    why_it_matters: "Quand DALL-E sort des images correctes, Midjourney sort des images dignes d'agences. Le rendu, la lumière, le sens artistique sont au-dessus du marché.",
+    how_to_use: "1. Abonnement payant (10 USD/mois minimum)\n2. Décris ta scène avec style, lumière, lentille (--ar 16:9 --v 6)\n3. Itère avec les variantes V1-V4 ou utilise --vary pour explorer",
+    target_level: 'intermediate',
+  },
+  {
+    slug: 'elevenlabs', name: 'ElevenLabs', category: 'Voix',
+    description: "Voix IA hyper-réalistes, multilingues, avec clonage de voix possible. Utilisé pour le doublage, les podcasts, la lecture audio.",
+    url: 'https://elevenlabs.io',
+    why_it_matters: "La meilleure synthèse vocale du marché, à des années-lumière des voix robotiques d'avant. Ouvre des cas d'usage : audiobooks personnels, version audio de tes articles, doublage de vidéos.",
+    how_to_use: "1. Compte gratuit (10 min/mois) sur elevenlabs.io\n2. Choisis une voix dans la bibliothèque ou clone la tienne\n3. Colle ton texte, ajuste la stabilité et le style, génère l'audio",
+    target_level: 'intermediate',
+  },
+  {
+    slug: 'gamma', name: 'Gamma', category: 'Présentations',
+    description: "Génère des présentations complètes (slides, design, contenu) à partir d'un simple prompt ou d'un texte existant.",
+    url: 'https://gamma.app',
+    why_it_matters: "Tu décris ton sujet en 2 lignes, tu obtiens une présentation propre en 30 secondes. Énorme gain de temps pour qui pitche, forme ou présente régulièrement.",
+    how_to_use: "1. Compte gratuit (400 crédits) sur gamma.app\n2. Choisis \"Generate\" puis décris le contenu et le ton souhaité\n3. Édite slide par slide, exporte en PDF ou PPT",
+    target_level: 'beginner',
+  },
+  {
+    slug: 'notion-ai', name: 'Notion AI', category: 'Productivité',
+    description: "L'IA intégrée directement dans Notion. Résume, traduit, écrit et structure tes notes sans quitter ton workspace.",
+    url: 'https://notion.so',
+    why_it_matters: "Si tu vis déjà dans Notion, Notion AI t'évite le copier-coller permanent vers ChatGPT. L'IA voit ton contexte (pages, bases de données) et travaille directement dans tes docs.",
+    how_to_use: "1. Active Notion AI (10 USD/mois après essai)\n2. Tape /ai dans n'importe quelle page pour invoquer l'IA\n3. Utilise Q&A pour interroger toute ta base Notion",
+    target_level: 'intermediate',
+  },
+  {
+    slug: 'granola', name: 'Granola', category: 'Réunions',
+    description: "Le note-taker de réunions qui écoute, transcrit et structure tes meetings sans bot intrusif dans l'appel.",
+    url: 'https://granola.ai',
+    why_it_matters: "Pas de bot \"Granola is recording\" qui flippe tes interlocuteurs. L'app capte l'audio en local, et te ressort un compte-rendu structuré (décisions, action items, suivi).",
+    how_to_use: "1. Télécharge Granola pour Mac (Windows en cours)\n2. Lance l'enregistrement avant ton meeting (en local)\n3. Récupère le compte-rendu structuré et envoie aux participants",
+    target_level: 'intermediate',
+  },
+  {
+    slug: 'zapier', name: 'Zapier', category: 'Automatisation',
+    description: "L'outil n°1 pour connecter tes apps entre elles sans une ligne de code. 7000+ intégrations disponibles.",
+    url: 'https://zapier.com',
+    why_it_matters: "L'IA seule ne change pas ton workflow. Zapier fait la liaison : un email arrive → l'IA résume → ça atterrit dans Notion. C'est le glue qui transforme l'IA en automatisation utile.",
+    how_to_use: "1. Compte gratuit (100 tasks/mois) sur zapier.com\n2. Crée un \"Zap\" : trigger (ex: nouvel email) + action (ex: envoyer à ChatGPT)\n3. Branche la sortie ChatGPT sur ta destination (Slack, Notion, etc.)",
+    target_level: 'advanced',
+  },
+];
+
+async function seedToolCardsIfEmpty() {
+  try {
+    const countRes = await query('SELECT COUNT(*)::int AS n FROM tool_cards');
+    const n = countRes.rows[0]?.n || 0;
+    if (n > 0) return { skipped: true, existing: n };
+    let inserted = 0;
+    for (let i = 0; i < DEFAULT_TOOL_CARDS.length; i++) {
+      const t = DEFAULT_TOOL_CARDS[i];
+      await query(
+        `INSERT INTO tool_cards (slug, name, category, description, url, why_it_matters, how_to_use, target_level, target_jobs, active, position)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10)`,
+        [t.slug, t.name, t.category || null, t.description || null, t.url || null,
+         t.why_it_matters || null, t.how_to_use || null, t.target_level || null,
+         JSON.stringify(t.target_jobs || []), i]
+      );
+      inserted++;
+    }
+    return { seeded: true, count: inserted };
+  } catch (err) {
+    logger.error('Erreur seedToolCardsIfEmpty', { error: err.message });
+    return { error: err.message };
+  }
+}
+
+// ============================================
+// SEED des fiches Prompts par défaut
+// ============================================
+const DEFAULT_PROMPT_CARDS = [
+  {
+    slug: 'brainstorm-structure', title: "Brainstorm structuré", category: 'Idéation',
+    use_case: "Quand tu cherches des idées sur un sujet et tu veux éviter les listes plates et ennuyeuses.",
+    prompt_template: `Tu es un facilitateur de brainstorming senior. Ton job : générer 10 idées sur le sujet "[SUJET]" en suivant cette structure :
+
+1. 3 idées "consensus" (faciles, attendues)
+2. 4 idées "intéressantes" (plus créatives mais réalisables)
+3. 2 idées "audacieuses" (qui sortent du cadre)
+4. 1 idée "absurde" (volontairement provocante)
+
+Pour chaque idée : 1 ligne de titre + 2 lignes de description + le risque principal.
+
+Sujet : [SUJET]
+Contexte : [CONTEXTE]
+Contrainte clé : [CONTRAINTE]`,
+    example_output: "Idée 1 (consensus) : Lancer une newsletter hebdo. Description : ... Risque : ...",
+    target_level: 'beginner',
+  },
+  {
+    slug: 'resume-executif', title: "Résumé exécutif (1 page)", category: 'Rédaction',
+    use_case: "Pour transformer un long document (rapport, étude, contrat) en synthèse lisible en 2 minutes.",
+    prompt_template: `Tu es un consultant senior qui rédige des résumés exécutifs pour des dirigeants pressés. Tu lis le document suivant et tu produis :
+
+1. **Le verdict** (1 phrase) — l'essentiel à retenir
+2. **3 points-clés** (3 puces, 1 ligne chacune)
+3. **Les chiffres importants** (3 max, contextualisés)
+4. **Les risques / angles morts** (2 max)
+5. **La recommandation** (1 phrase actionnable)
+
+Total : 200 mots max. Pas de jargon, pas de "il convient de noter".
+
+Document à résumer :
+"""
+[TEXTE DU DOCUMENT]
+"""`,
+    example_output: "Le verdict : Le marché européen progresse de 8 % en 2025... 3 points-clés : ... Recommandation : Investir dans le segment B2B avant Q3.",
+    target_level: 'beginner',
+  },
+  {
+    slug: 'fiche-client', title: "Fiche client en 2 minutes", category: 'Commercial',
+    use_case: "Avant un rendez-vous client, tu veux une synthèse propre sur l'entreprise + des angles d'accroche.",
+    prompt_template: `Tu es un préparateur de RDV commerciaux. À partir des infos publiques, je veux une fiche prête à imprimer pour le RDV avec [NOM ENTREPRISE].
+
+Structure :
+1. **Identité** : secteur, taille (CA, effectif si dispo), année, dirigeants
+2. **Positionnement** : ce qui les différencie en 1 phrase
+3. **Actu récente** (3 derniers mois) : 2-3 faits saillants
+4. **Enjeux probables** : 3 sujets qui les concernent vu leur secteur/taille
+5. **Angles d'accroche** : 3 phrases d'ouverture personnalisées pour le RDV
+6. **Pièges à éviter** : 1-2 sujets à manier avec précaution
+
+Si une info n'est pas vérifiable, tu écris "Non vérifié" plutôt que d'inventer.
+
+Entreprise : [NOM]
+Mon offre : [OFFRE]
+Mon objectif RDV : [OBJECTIF]`,
+    example_output: "Identité : SaaS B2B, 80 employés, CA estimé 12M€... Angle 1 : \"J'ai vu que vous avez recruté 3 ingés ML en mars — vous attaquez la prédictif ?\"",
+    target_level: 'intermediate',
+  },
+  {
+    slug: 'email-pro-reponse', title: "L'email pro qui obtient une réponse", category: 'Communication',
+    use_case: "Pour les emails sortants à enjeu (prospection, demande, relance) — éviter les emails qui finissent ignorés.",
+    prompt_template: `Tu es un coach en email pro. Rédige un email court qui maximise le taux de réponse, en suivant ces règles :
+
+- Objet : 6 mots max, intrigant ou bénéfice clair (pas \"Demande de RDV\")
+- Bonjour : prénom seul (jamais \"Madame, Monsieur\")
+- Phrase 1 : un signal personnalisé (pas \"j'espère que vous allez bien\")
+- Phrase 2 : ce que je veux, en 1 phrase
+- Phrase 3 : la valeur pour mon destinataire (pas pour moi)
+- CTA : 1 question fermée avec 2 options (oui/non, mardi/jeudi)
+- Signature : prénom + 1 ligne de qualif max
+
+Total : 80 mots max.
+
+Contexte :
+Destinataire : [QUI]
+Mon objectif : [QUOI]
+Signal personnalisé que j'ai : [SIGNAL]
+Valeur pour lui/elle : [VALEUR]`,
+    example_output: "Objet : 12 secondes de votre attention\nBonjour Sophie,\nJ'ai vu votre talk au DevoxxFR sur l'observabilité...",
+    target_level: 'intermediate',
+  },
+  {
+    slug: 'pitch-idee', title: "Le pitch d'idée 60 secondes", category: 'Communication',
+    use_case: "Tu as 1 minute pour vendre une idée à ton boss, à un client, à un investisseur. Tu prépares le pitch propre.",
+    prompt_template: `Tu es un coach en pitch. Aide-moi à structurer un pitch de 60 secondes (≈150 mots) pour mon idée.
+
+Structure imposée :
+1. **L'accroche** (10s) : le problème en 1 phrase choquante ou contre-intuitive
+2. **La promesse** (10s) : ce que mon idée résout, en 1 phrase
+3. **La preuve** (15s) : 2 chiffres ou exemples concrets
+4. **La différenciation** (10s) : pourquoi c'est nous et pas un autre
+5. **L'ask** (15s) : exactement ce que je demande à mon interlocuteur
+
+À éviter : adjectifs vagues (\"innovant\", \"unique\"), jargon, phrases longues.
+
+Mon idée : [IDÉE]
+Mon audience : [À QUI]
+Ce que je veux qu'ils fassent : [ASK]`,
+    example_output: "Accroche : 70 % des PME françaises perdent 4h/semaine sur des tâches IA mal automatisées. Promesse : ...",
+    target_level: 'intermediate',
+  },
+  {
+    slug: 'fiche-produit', title: "Fiche produit qui vend", category: 'Marketing',
+    use_case: "Pour rédiger une fiche produit (e-commerce, SaaS landing) qui convertit au lieu de juste décrire.",
+    prompt_template: `Tu es un copywriter senior spécialisé conversion. Rédige une fiche produit pour [PRODUIT] qui maximise le clic sur le bouton d'achat.
+
+Structure :
+1. **Headline** (max 8 mots) : bénéfice n°1, pas la feature
+2. **Sous-titre** (max 15 mots) : pour qui + pourquoi maintenant
+3. **3 bénéfices clés** : verbe d'action + résultat concret + chiffre si possible
+4. **Comment ça marche** : 3 étapes, 1 ligne chacune
+5. **Preuve sociale** : 1 témoignage court + 1 chiffre d'usage
+6. **Levée d'objection** : la principale crainte du client + ta réponse
+7. **CTA principal** : 4 mots max, verbe d'action
+
+Style : phrases courtes, tu parles AU client (\"tu\" / \"vous\"), pas de mots vides.
+
+Produit : [NOM + DESCRIPTION 2 LIGNES]
+Cible : [QUI]
+Prix : [PRIX]
+Différenciateur : [CE QUI NOUS REND UNIQUE]`,
+    example_output: "Headline : Lance ton SaaS en 7 jours. Sous-titre : Pour les freelances tech qui veulent...",
+    target_level: 'intermediate',
+  },
+  {
+    slug: 'faq-from-text', title: "FAQ générée depuis un texte", category: 'Productivité',
+    use_case: "Tu as un long doc (politique RH, conditions, manuel) et tu veux en sortir une FAQ utile pour tes équipes ou clients.",
+    prompt_template: `Tu es un rédacteur de FAQ pédagogiques. Lis le document suivant et génère 10 questions-réponses pertinentes.
+
+Règles :
+- Les questions sont formulées comme un vrai utilisateur les poserait (pas du jargon)
+- Les réponses font 2-4 phrases max
+- Ordre : du plus fréquent au plus pointu
+- Si une question n'a pas de réponse claire dans le doc, écris \"Non précisé dans le document — à valider en interne\"
+- Cite la section du doc en fin de réponse si possible (ex: \"[Section 3.2]\")
+
+Document :
+"""
+[TEXTE DU DOCUMENT]
+"""
+
+Audience cible de la FAQ : [QUI]`,
+    example_output: "Q1 : Combien de jours de congés j'ai par an ? R : Tu as 25 jours ouvrés... [Section 4.1]",
+    target_level: 'beginner',
+  },
+  {
+    slug: 'plan-formation', title: "Plan de formation personnalisé", category: 'Apprentissage',
+    use_case: "Tu veux te former sur un sujet (IA, no-code, langage X) en 30 jours sans tomber dans 100 tutos sans fil rouge.",
+    prompt_template: `Tu es un coach en apprentissage. Construis-moi un plan de formation personnalisé sur 30 jours, à raison de 30 min/jour, sur le sujet "[SUJET]".
+
+Structure :
+1. **Semaine 1 — Fondations** : 7 sessions, du concept de base aux 3 outils incontournables
+2. **Semaine 2 — Pratique guidée** : 7 sessions avec exercices imposés
+3. **Semaine 3 — Projet** : 7 sessions pour construire un projet réel défini en jour 15
+4. **Semaine 4 — Approfondissement** : 7 sessions pour combler les angles morts + 1 ressource avancée par jour
+5. **Jour 30** : auto-évaluation + 3 prochaines étapes
+
+Pour chaque jour : titre de la session (1 ligne) + livrable concret (1 ligne) + 1 ressource externe.
+
+Mon niveau actuel : [NIVEAU]
+Mon objectif final : [OBJECTIF MESURABLE]
+Mes contraintes : [TEMPS, OUTILS, BUDGET]`,
+    example_output: "Jour 1 : Comprendre les LLMs en 30 min. Livrable : Une page Notion avec ta définition. Ressource : ...",
+    target_level: 'intermediate',
+  },
+  {
+    slug: 'revue-presse', title: "Revue de presse synthétique", category: 'Veille',
+    use_case: "Pour transformer 5-10 articles d'actu en une synthèse propre, structurée par enjeux, sans liste plate.",
+    prompt_template: `Tu es un analyste presse senior. Voici plusieurs articles sur le sujet [THÈME]. Produis une revue de presse en suivant cette structure :
+
+1. **Le climat général** (2 phrases) : où en est le sujet cette semaine
+2. **3 angles forts** : pour chaque angle, 1 titre + 2 phrases + les sources qui le portent
+3. **La controverse** : un point où les sources divergent + qui dit quoi
+4. **Le signal faible** : 1 info passée presque inaperçue mais à surveiller
+5. **L'angle mort** : 1 question importante qu'aucun article ne traite
+
+Total : 350 mots max. Cite tes sources entre crochets après chaque info ([Le Monde, 14/03], [TechCrunch, 12/03]).
+
+Articles :
+"""
+[ARTICLES OU LIENS]
+"""`,
+    example_output: "Climat général : Cette semaine, les régulateurs européens accélèrent... Angle fort 1 : Les amendes IA Act prennent forme [Politico, 13/03]",
+    target_level: 'advanced',
+  },
+  {
+    slug: 'compte-rendu-reunion', title: "Compte-rendu de réunion clean", category: 'Productivité',
+    use_case: "Tu sors d'une réunion, tu as des notes en vrac (ou une transcription), tu veux un CR exploitable et envoyable.",
+    prompt_template: `Tu es l'assistant·e de direction qui rédige les comptes-rendus officiels. Transforme ces notes brutes en un CR pro, en suivant cette structure :
+
+1. **En-tête** : date, durée, participants, objet
+2. **Décisions prises** : liste, avec qui décide et la deadline si mentionnée
+3. **Actions à mener** : liste, format \"Qui fait Quoi pour Quand\"
+4. **Points en suspens** : sujets non tranchés + qui doit les arbitrer
+5. **Prochaine étape** : date du prochain point ou jalon
+
+Règles :
+- Pas de paraphrase de discussion ("X a dit que..."), uniquement les sorties actionnables
+- Si une info manque (ex: deadline), écris \"À préciser\"
+- Ton neutre, factuel
+- 300 mots max
+
+Notes brutes :
+"""
+[NOTES OU TRANSCRIPTION]
+"""`,
+    example_output: "Décisions : Le budget Q2 est validé à 45k€ — décidé par Marc, à confirmer en CODIR du 25/03. Actions : Sophie prépare le brief design pour le 10/04...",
+    target_level: 'beginner',
+  },
+];
+
+async function seedPromptCardsIfEmpty() {
+  try {
+    const countRes = await query('SELECT COUNT(*)::int AS n FROM prompt_cards');
+    const n = countRes.rows[0]?.n || 0;
+    if (n > 0) return { skipped: true, existing: n };
+    let inserted = 0;
+    for (let i = 0; i < DEFAULT_PROMPT_CARDS.length; i++) {
+      const p = DEFAULT_PROMPT_CARDS[i];
+      await query(
+        `INSERT INTO prompt_cards (slug, title, category, use_case, prompt_template, example_output, target_level, target_jobs, active, position)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9)`,
+        [p.slug, p.title, p.category || null, p.use_case || null,
+         p.prompt_template, p.example_output || null, p.target_level || null,
+         JSON.stringify(p.target_jobs || []), i]
+      );
+      inserted++;
+    }
+    return { seeded: true, count: inserted };
+  } catch (err) {
+    logger.error('Erreur seedPromptCardsIfEmpty', { error: err.message });
+    return { error: err.message };
+  }
+}
+
+// ============================================
+// CRUD Tool cards
+// ============================================
+router.get('/tool-cards', adminAuth, async (req, res) => {
+  try {
+    const r = await query('SELECT * FROM tool_cards ORDER BY position ASC, id ASC');
+    res.json({ tools: r.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/tool-cards', adminAuth, async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.slug || !b.name) return res.status(400).json({ error: 'slug + name requis' });
+    const r = await query(
+      `INSERT INTO tool_cards (slug, name, category, description, url, why_it_matters, how_to_use, target_level, target_jobs, active, position)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+      [b.slug, b.name, b.category || null, b.description || null, b.url || null,
+       b.why_it_matters || null, b.how_to_use || null, b.target_level || null,
+       JSON.stringify(b.target_jobs || []), b.active !== false, b.position ?? 0]
+    );
+    require('../services/cards').clearCache();
+    res.json({ tool: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/tool-cards/:id', adminAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const allowed = ['slug', 'name', 'category', 'description', 'url', 'why_it_matters', 'how_to_use', 'target_level', 'target_jobs', 'active', 'position'];
+    const fields = Object.keys(req.body || {}).filter(k => allowed.includes(k));
+    if (fields.length === 0) return res.status(400).json({ error: 'Aucun champ à modifier' });
+    const sets = fields.map((f, i) => `${f} = $${i + 2}`);
+    const values = fields.map(f => f === 'target_jobs' ? JSON.stringify(req.body[f]) : req.body[f]);
+    const sql = `UPDATE tool_cards SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $1 RETURNING *`;
+    const r = await query(sql, [id, ...values]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Fiche introuvable' });
+    require('../services/cards').clearCache();
+    res.json({ tool: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================
+// CRUD Prompt cards
+// ============================================
+router.get('/prompt-cards', adminAuth, async (req, res) => {
+  try {
+    const r = await query('SELECT * FROM prompt_cards ORDER BY position ASC, id ASC');
+    res.json({ prompts: r.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/prompt-cards', adminAuth, async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.slug || !b.title || !b.prompt_template) {
+      return res.status(400).json({ error: 'slug + title + prompt_template requis' });
+    }
+    const r = await query(
+      `INSERT INTO prompt_cards (slug, title, category, use_case, prompt_template, example_output, target_level, target_jobs, active, position)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [b.slug, b.title, b.category || null, b.use_case || null, b.prompt_template,
+       b.example_output || null, b.target_level || null,
+       JSON.stringify(b.target_jobs || []), b.active !== false, b.position ?? 0]
+    );
+    require('../services/cards').clearCache();
+    res.json({ prompt: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/prompt-cards/:id', adminAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const allowed = ['slug', 'title', 'category', 'use_case', 'prompt_template', 'example_output', 'target_level', 'target_jobs', 'active', 'position'];
+    const fields = Object.keys(req.body || {}).filter(k => allowed.includes(k));
+    if (fields.length === 0) return res.status(400).json({ error: 'Aucun champ à modifier' });
+    const sets = fields.map((f, i) => `${f} = $${i + 2}`);
+    const values = fields.map(f => f === 'target_jobs' ? JSON.stringify(req.body[f]) : req.body[f]);
+    const sql = `UPDATE prompt_cards SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $1 RETURNING *`;
+    const r = await query(sql, [id, ...values]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'Fiche introuvable' });
+    require('../services/cards').clearCache();
+    res.json({ prompt: r.rows[0] });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

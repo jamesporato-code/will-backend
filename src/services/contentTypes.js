@@ -169,6 +169,16 @@ REGLES :
 // TYPE C â Outil du jour (Pro)
 // ============================================
 async function generateOutilDuJour(user) {
+  // 1) Essayer une fiche pré-écrite depuis la DB (rapide, contrôlé).
+  try {
+    const cards = require('./cards');
+    const text = await cards.getDailyToolText(user);
+    if (text) return text;
+  } catch (err) {
+    logger.error('cards.getDailyToolText error, fallback Claude', { error: err.message });
+  }
+
+  // 2) Fallback : génération Claude si la table est vide ou en erreur.
   let toolData = '';
   if (process.env.TAVILY_API_KEY) {
     toolData = await webSearch('best new AI tools 2026 productivity business');
@@ -211,6 +221,16 @@ REGLES :
 // TYPE D â Prompt du jour (Pro, 1x/semaine)
 // ============================================
 async function generatePromptDuJour(user) {
+  // 1) Essayer une fiche pré-écrite depuis la DB.
+  try {
+    const cards = require('./cards');
+    const text = await cards.getDailyPromptText(user);
+    if (text) return text;
+  } catch (err) {
+    logger.error('cards.getDailyPromptText error, fallback Claude', { error: err.message });
+  }
+
+  // 2) Fallback Claude.
   const prompt = `Tu es Will, coach IA sur WhatsApp. Genere LE PROMPT DU JOUR.
 
 PROFIL :
