@@ -108,6 +108,13 @@ router.post('/', async (req, res) => {
       return;
     }
 
+    // Onboarding flow — passe AVANT /stop, /daily et 'mon compte' pour
+    // empêcher d'échapper le parcours d'inscription par accident.
+    if (!user.onboarding_complete) {
+      const handled = await onboarding.handleOnboarding(user, parsed);
+      if (handled) return;
+    }
+
     if (textLower === '/stop' || textLower === 'stop') {
       await userService.updateProfile(user.id, { daily_opt_in: false });
       await whatsapp.sendText(
@@ -137,12 +144,6 @@ router.post('/', async (req, res) => {
     if (textLower === 'mon compte' || textLower === 'compte' || textLower === 'abonnement') {
       await handleMyAccount(user);
       return;
-    }
-
-    // Onboarding flow
-    if (!user.onboarding_complete) {
-      const handled = await onboarding.handleOnboarding(user, parsed);
-      if (handled) return;
     }
 
     // Change hour (depuis Mon compte) : déclenche un free-text « awaiting_hour ».

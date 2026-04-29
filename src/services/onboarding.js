@@ -239,6 +239,14 @@ async function handleOnboarding(user, parsed) {
   // STEP 61 : "other" libre
   if (step === 61 && parsed.text) {
     const customInterest = parsed.text.trim().substring(0, 200);
+    if (customInterest.length < 3) {
+      await whatsapp.sendText(
+        user.whatsapp_id,
+        'Décris-moi en une phrase courte ce que tu veux apprendre ou appliquer avec l\'IA.\n\n' +
+        '_Exemple : "Utiliser l\'IA pour ma boîte de conseil en immobilier."_'
+      );
+      return true;
+    }
     await updateProfile(user.id, { ia_interest_other: customInterest, onboarding_step: 7 });
     await whatsapp.sendText(user.whatsapp_id, 'Noté.');
     await delay(800);
