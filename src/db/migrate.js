@@ -28,8 +28,8 @@ async function migrate() {
         stripe_customer_id VARCHAR(100),
         stripe_subscription_id VARCHAR(100),
         team_id INTEGER REFERENCES teams(id),
-        daily_messages_count INTEGER DEFAULT 0,
-        daily_messages_reset_at DATE DEFAULT CURRENT_DATE,
+        daily_message_count INTEGER DEFAULT 0,
+        last_message_date DATE DEFAULT CURRENT_DATE,
         onboarding_complete BOOLEAN DEFAULT false,
         onboarding_step INTEGER DEFAULT 0,
         preferred_hour INTEGER DEFAULT 8,
@@ -70,6 +70,8 @@ async function migrate() {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS onboarding_step INTEGER DEFAULT 0;`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS interests VARCHAR(200);`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_hour INTEGER DEFAULT 8;`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_message_count INTEGER DEFAULT 0;`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_message_date DATE DEFAULT CURRENT_DATE;`);
 
     await pool.query('CREATE INDEX IF NOT EXISTS idx_users_whatsapp ON users(whatsapp_id);');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_messages_user_created ON messages(user_id, created_at DESC);');
