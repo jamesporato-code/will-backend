@@ -15,6 +15,7 @@ const userService = require('../services/userService');
 const { getUserStats } = require('../services/userService');
 const onboarding = require('../services/onboarding');
 const menu = require('../services/menu');
+const { getCurrentSession } = require('../services/modules');
 const { getCachedResponse, cacheResponse } = require('../services/redis');
 const { handleProMenuChoice, sendDailyForUser } = require('../cron/scheduler');
 const Stripe = require('stripe');
@@ -263,30 +264,67 @@ async function handleMyAccount(user) {
   const levelDisplay = user.level === 'intermediate' ? 'Intermédiaire'
     : user.level === 'beginner' ? 'Débutant'
     : 'Débutant';
-  const info = '*Ton compte Will*\n\n' +
-    'Plan : ' + (planNames[user.plan] || user.plan) + '\n' +
-    'Niveau : ' + levelDisplay + '\n' +
-    'Secteur : ' + (user.job || 'Non renseigné') + '\n' +
-    'Heure du daily : ' + hourLabel + '\n' +
-    'Messages par jour : ' + (limits[user.plan] || '?') + '\n' +
-    'Utilisés aujourd\'hui : ' + (user.daily_message_count || 0) + '\n\n' +
-    '*Ton activité*\n' +
-    '- ' + stats.msgWeek + ' messages cette semaine\n' +
-    '- ' + stats.msgTotal + ' messages au total\n' +
-    '- ' + stats.activeDaysMonth + ' jours actifs sur les 30 derniers\n' +
-    '~' + stats.hoursSavedTotal + 'h gagnées depuis ton inscription';
+
+  // Position dans le parcours (peut échouer silencieusement si modules pas chargeables)
+  let parcoursLine = '';
+  let nextTopicLine = '';
+  try {
+    const session = await getCurrentSession(user);
+    if (session) {
+      if (session.done) {
+        parcoursLine = 'Parcours : terminé (' + session.totalModules + ' modules)';
+      } else if (session.module) {
+        const m = session.module;
+        const sessionNum = (session.sessionIndex || 0) + 1;
+        parcoursLine = 'Parcours : Module ' + m.position + '/' + session.totalModules +
+          ' — ' + m.name + ' (session ' + sessionNum + '/' + m.sessions + ')';
+        if (session.topic) {
+          nextTopicLine = 'Prochaine session : ' + session.topic;
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn('handleMyAccount : impossible de calculer la session courante', { userId: user.id, error: err.message });
+  }
+
+  const streakNum = parseInt(user.streak || 0, 10);
+  const streakLine = streakNum > 0
+    ? 'Série : ' + streakNum + (streakNum > 1 ? ' jours d\'affilée' : ' jour')
+    : 'Série : pas encore lancée';
+
+  const lines = [
+    '*Ton compte Will*',
+    '',
+    'Plan : ' + (planNames[user.plan] || user.plan),
+    'Niveau : ' + levelDisplay,
+    'Secteur : ' + (user.job || 'Non renseigné'),
+    'Heure du daily : ' + hourLabel,
+  ];
+  if (parcoursLine) lines.push(parcoursLine);
+  if (nextTopicLine) lines.push(nextTopicLine);
+  lines.push('');
+  lines.push('*Ton activité*');
+  lines.push(streakLine);
+  lines.push('- ' + stats.msgWeek + ' messages cette semaine');
+  lines.push('- ' + stats.activeDaysMonth + ' jours actifs sur les 30 derniers');
+  lines.push('~' + stats.hoursSavedTotal + 'h gagnées depuis ton inscription');
+  lines.push('');
+  lines.push('Messages quotidiens : ' + (limits[user.plan] || '?') +
+    ' (utilisés aujourd\'hui : ' + (user.daily_message_count || 0) + ')');
+
+  const info = lines.join('\n');
 
   if (user.plan === 'pro') {
     await whatsapp.sendButtons(user.whatsapp_id, info, [
-      { id: 'account_manage', title: 'Gérer mon abo' },
-      { id: 'account_change_hour', title: 'Changer mon heure' },
+      { id: 'menu_today', title: 'Rejouer le daily' },
       { id: 'account_edit_profile', title: 'Modifier profil' },
+      { id: 'account_manage', title: 'Gérer mon abo' },
     ]);
   } else {
     await whatsapp.sendButtons(user.whatsapp_id, info, [
-      { id: 'plan_pro', title: 'Pro 6,99/mois' },
-      { id: 'account_change_hour', title: 'Changer mon heure' },
+      { id: 'menu_today', title: 'Rejouer le daily' },
       { id: 'account_edit_profile', title: 'Modifier profil' },
+      { id: 'plan_pro', title: 'Pro 6,99/mois' },
     ], null, 'Pro pour tout débloquer');
   }
 }
