@@ -7,7 +7,7 @@ const whatsapp = require('./whatsapp');
 const userService = require('./userService');
 const logger = require('../utils/logger');
 const { query } = require('../db/pool');
-const { getCachedResponse } = require('./redis');
+const { getCachedResponse, deleteCache } = require('./redis');
 const { parseHourInput } = require('./onboarding');
 const { SECTORS, getSectorLabel, isValidSector } = require('./sectors');
 
@@ -331,14 +331,30 @@ async function applyChangeModule(user, slug) {
     current_module: mod.position,
     module_progress: progress,
   });
-  await whatsapp.sendButtons(
+  // Cache du daily genere pour l'ancien module : on l'invalide pour
+  // ne pas rejouer un contenu hors-sujet sur "Ma session du jour".
+  await deleteCache('daily:' + user.id);
+
+  await whatsapp.sendText(
     user.whatsapp_id,
-    'Tu es maintenant sur *' + mod.name + '* (session 1/' + mod.sessions + '). Le prochain message du jour démarrera ce module.',
-    [
-      { id: 'menu_parcours', title: 'Voir maintenant' },
-      { id: 'menu_hub', title: 'Retour au menu' },
-    ]
+    'Tu es maintenant sur *' + mod.name + '* (session 1/' + mod.sessions + '). Je te lance la session 1 maintenant.'
   );
+
+  await new Promise(r => setTimeout(r, 800));
+  try {
+    const { sendDailyForUser } = require('../cron/scheduler');
+    await sendDailyForUser(user.id, { first: true });
+  } catch (err) {
+    logger.error('applyChangeModule : echec sendDailyForUser', { userId: user.id, error: err.message });
+    await whatsapp.sendButtons(
+      user.whatsapp_id,
+      'Je n\'ai pas pu generer la nouvelle session immediatement. Reessaie via le menu.',
+      [
+        { id: 'menu_parcours', title: 'Ma session du jour' },
+        { id: 'menu_hub', title: 'Retour au menu' },
+      ]
+    );
+  }
 }
 
 async function handleChangeModuleButton(user, id) {
@@ -447,17 +463,30 @@ async function applySectorChange(user, newSlug, resetParcours) {
     updates.module_progress = {};
   }
   await userService.updateProfile(user.id, updates);
+  // Le contenu cache du daily a ete genere avec l'ancien secteur :
+  // sans invalidation, "Ma session du jour" rejouerait l'ancien framing.
+  await deleteCache('daily:' + user.id);
+
   const txt = resetParcours
-    ? 'Secteur mis à jour. Tu repars du module 1 du parcours adapté à ton nouveau secteur.'
-    : 'Secteur mis à jour. Tu continues là où tu en étais ; les prochains modules seront adaptés à ton nouveau secteur.';
-  await whatsapp.sendButtons(
-    user.whatsapp_id,
-    txt,
-    [
-      { id: 'menu_parcours', title: 'Ma session du jour' },
-      { id: 'menu_hub', title: 'Retour au menu' },
-    ]
-  );
+    ? 'Secteur mis à jour. Je relance ta session 1 adaptée à ton nouveau secteur.'
+    : 'Secteur mis à jour. Je relance ta session du jour avec le nouveau cadrage.';
+  await whatsapp.sendText(user.whatsapp_id, txt);
+
+  await new Promise(r => setTimeout(r, 800));
+  try {
+    const { sendDailyForUser } = require('../cron/scheduler');
+    await sendDailyForUser(user.id, { first: !!resetParcours });
+  } catch (err) {
+    logger.error('applySectorChange : echec sendDailyForUser', { userId: user.id, error: err.message });
+    await whatsapp.sendButtons(
+      user.whatsapp_id,
+      'Je n\'ai pas pu generer la nouvelle session immediatement. Reessaie via le menu.',
+      [
+        { id: 'menu_parcours', title: 'Ma session du jour' },
+        { id: 'menu_hub', title: 'Retour au menu' },
+      ]
+    );
+  }
 }
 
 async function handleChangeSectorButton(user, id) {

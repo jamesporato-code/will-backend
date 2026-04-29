@@ -40,4 +40,9 @@ async function getCachedResponse(key) {
   return cached ? JSON.parse(cached) : null;
 }
 
-module.exports = { getRedis, cacheResponse, getCachedResponse };
+async function deleteCache(key) {
+  const r = getRedis();
+  await r.del(`will:cache:${key}`);
+}
+
+module.exports = { getRedis, cacheResponse, getCachedResponse, deleteCache };
