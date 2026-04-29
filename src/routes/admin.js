@@ -322,6 +322,7 @@ router.post('/reset-user/:id', adminAuth, async (req, res) => {
         onboarding_complete = false,
         level = NULL,
         job = NULL,
+        sector = NULL,
         interests = NULL,
         daily_opt_in = NULL,
         preferred_hour = NULL,
@@ -430,6 +431,13 @@ router.post('/migrate', adminAuth, async (req, res) => {
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS ia_time_budget INTEGER",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS menu_quiz_step INTEGER DEFAULT 0",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS free_text_context TEXT",
+      // v4 : taxonomie secteurs + tags modules
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS sector TEXT",
+      "ALTER TABLE modules ADD COLUMN IF NOT EXISTS applicable_sectors TEXT[]",
+      "ALTER TABLE modules ADD COLUMN IF NOT EXISTS applicable_levels TEXT[]",
+      // Normalisation level : drop 'advanced' (n'existe plus en v4)
+      "UPDATE users SET level = 'intermediate' WHERE level = 'advanced'",
+      "UPDATE modules SET level = 'intermediate' WHERE level = 'advanced'",
       `CREATE TABLE IF NOT EXISTS modules (
         id SERIAL PRIMARY KEY,
         slug TEXT UNIQUE NOT NULL,
@@ -495,14 +503,17 @@ router.post('/migrate', adminAuth, async (req, res) => {
 
     // Seed des modules par défaut si la table est vide
     const seedResult = await seedModulesIfEmpty();
+    // v4 : applique les tags par défaut aux modules déjà créés (idempotent)
+    const tagsResult = await applyDefaultModuleTags();
     const seedToolsResult = await seedToolCardsIfEmpty();
     const seedPromptsResult = await seedPromptCardsIfEmpty();
     logger.info('DB migration run by admin', {
-      results, seed: seedResult, seedTools: seedToolsResult, seedPrompts: seedPromptsResult
+      results, seed: seedResult, tags: tagsResult, seedTools: seedToolsResult, seedPrompts: seedPromptsResult
     });
     res.json({
       success: true, results,
       seed: seedResult,
+      tags: tagsResult,
       seedTools: seedToolsResult,
       seedPrompts: seedPromptsResult,
     });
@@ -513,24 +524,29 @@ router.post('/migrate', adminAuth, async (req, res) => {
 });
 
 // ============================================
-// SEED des modules par défaut
+// SEED des modules par défaut (v4 — taggués sectors + levels)
+// applicable_sectors : null = universel
+// applicable_levels  : null = tous niveaux (beginner+intermediate)
 // ============================================
 const DEFAULT_MODULES = [
-  { slug: 'intro-ia', position: 1, name: "Introduction à l'IA", level: 'beginner', dynamic: false, sessions: [
+  { slug: 'intro-ia', position: 1, name: "Introduction à l'IA", level: 'beginner', dynamic: false,
+    applicable_sectors: null, applicable_levels: ['beginner'], sessions: [
     "Qu'est-ce que l'IA ? Les bases en 3 minutes",
     "LLMs : comment marchent ChatGPT, Claude, Gemini",
     "Les types d'IA : générative, prédictive, conversationnelle",
     "Ce que l'IA sait faire (et ne sait PAS faire)",
     "Récap module + défi pratique",
   ]},
-  { slug: 'chatgpt-claude', position: 2, name: "ChatGPT & Claude — prise en main", level: 'beginner', dynamic: false, sessions: [
+  { slug: 'chatgpt-claude', position: 2, name: "ChatGPT & Claude — prise en main", level: 'beginner', dynamic: false,
+    applicable_sectors: null, applicable_levels: ['beginner'], sessions: [
     "Créer son compte et première conversation",
     "Les bons réflexes : contexte, format, contraintes",
     "ChatGPT vs Claude : forces et faiblesses",
     "Exercice : rédiger un email pro avec l'IA",
     "Récap module + défi pratique",
   ]},
-  { slug: 'prompt-engineering', position: 3, name: "Prompt Engineering", level: 'beginner+', dynamic: false, sessions: [
+  { slug: 'prompt-engineering', position: 3, name: "Prompt Engineering", level: 'beginner', dynamic: false,
+    applicable_sectors: null, applicable_levels: ['beginner', 'intermediate'], sessions: [
     "La structure d'un bon prompt : Rôle + Contexte + Tâche + Format",
     "Le role playing : transformer l'IA en expert",
     "Le chain-of-thought : faire raisonner l'IA étape par étape",
@@ -539,14 +555,16 @@ const DEFAULT_MODULES = [
     "Exercice : optimiser 3 prompts réels",
     "Récap module + défi pratique",
   ]},
-  { slug: 'productivite', position: 4, name: "IA pour la productivité", level: 'intermediate', dynamic: false, sessions: [
+  { slug: 'productivite', position: 4, name: "IA pour la productivité", level: 'intermediate', dynamic: false,
+    applicable_sectors: null, applicable_levels: ['beginner', 'intermediate'], sessions: [
     "Emails et communication : gagner 1h par jour",
     "Rapports et analyses : synthèse automatique",
     "Brainstorming et créativité : 10 idées en 2 min",
     "Organisation : IA + Notion, Obsidian, calendrier",
     "Récap module + défi pratique",
   ]},
-  { slug: 'domaine-1', position: 5, name: "IA dans ton domaine #1", level: 'intermediate', dynamic: true, sessions: [
+  { slug: 'domaine-1', position: 5, name: "IA dans ton domaine #1", level: 'intermediate', dynamic: true,
+    applicable_sectors: null, applicable_levels: ['beginner', 'intermediate'], sessions: [
     "Les cas d'usage IA les plus impactants dans ton secteur",
     "Prompt spécialisé #1 pour ton métier",
     "Prompt spécialisé #2 pour ton métier",
@@ -555,7 +573,8 @@ const DEFAULT_MODULES = [
     "Les outils IA spécifiques à ton domaine",
     "Récap module + défi pratique",
   ]},
-  { slug: 'domaine-2', position: 6, name: "IA dans ton domaine #2", level: 'intermediate', dynamic: true, sessions: [
+  { slug: 'domaine-2', position: 6, name: "IA dans ton domaine #2", level: 'intermediate', dynamic: true,
+    applicable_sectors: null, applicable_levels: ['intermediate'], sessions: [
     "Exploration de ton 2e domaine avec l'IA",
     "Prompt spécialisé #1 pour ce domaine",
     "Prompt spécialisé #2 pour ce domaine",
@@ -564,14 +583,16 @@ const DEFAULT_MODULES = [
     "Outils IA spécifiques",
     "Récap module + défi pratique",
   ]},
-  { slug: 'outils-ia', position: 7, name: "Les meilleurs outils IA", level: 'intermediate', dynamic: false, sessions: [
+  { slug: 'outils-ia', position: 7, name: "Les meilleurs outils IA", level: 'intermediate', dynamic: false,
+    applicable_sectors: null, applicable_levels: ['beginner', 'intermediate'], sessions: [
     "Outils texte : Claude, ChatGPT, Perplexity, Mistral",
     "Outils image : Midjourney, DALL-E, Flux, Ideogram",
     "Outils vidéo et audio : Runway, Suno, ElevenLabs",
     "Outils productivité : Gamma, Notion AI, Granola",
     "Récap module + ta boîte à outils personnalisée",
   ]},
-  { slug: 'automatisation', position: 8, name: "Automatisation — Zapier, Make, n8n", level: 'advanced', dynamic: false, sessions: [
+  { slug: 'automatisation', position: 8, name: "Automatisation — Zapier, Make, n8n", level: 'intermediate', dynamic: false,
+    applicable_sectors: null, applicable_levels: ['intermediate'], sessions: [
     "C'est quoi l'automatisation ? No-code vs low-code",
     "Zapier : ton premier workflow en 10 min",
     "Make (Integromat) : workflows visuels avancés",
@@ -580,7 +601,8 @@ const DEFAULT_MODULES = [
     "Cas pratique : automatiser un process complet",
     "Récap module + défi pratique",
   ]},
-  { slug: 'agents-ia', position: 9, name: "IA Agents & workflows complexes", level: 'advanced', dynamic: false, sessions: [
+  { slug: 'agents-ia', position: 9, name: "IA Agents & workflows complexes", level: 'intermediate', dynamic: false,
+    applicable_sectors: null, applicable_levels: ['intermediate'], sessions: [
     "Qu'est-ce qu'un agent IA ? Autonomie vs contrôle",
     "GPTs personnalisés et Claude Projects",
     "MCP : connecter Claude à tes outils",
@@ -589,7 +611,8 @@ const DEFAULT_MODULES = [
     "Cas pratique : ton assistant IA personnel",
     "Récap module + défi pratique",
   ]},
-  { slug: 'domaine-3', position: 10, name: "IA dans ton domaine #3", level: 'advanced', dynamic: true, sessions: [
+  { slug: 'domaine-3', position: 10, name: "IA dans ton domaine #3", level: 'intermediate', dynamic: true,
+    applicable_sectors: null, applicable_levels: ['intermediate'], sessions: [
     "Deep dive dans ton 3e domaine",
     "Techniques avancées de prompt pour ce domaine",
     "Combiner les 3 domaines : ta stack IA complète",
@@ -610,10 +633,10 @@ async function seedModulesIfEmpty() {
     let sessionsInserted = 0;
     for (const m of DEFAULT_MODULES) {
       const modRes = await query(
-        `INSERT INTO modules (slug, position, name, level, dynamic, active)
-         VALUES ($1, $2, $3, $4, $5, true)
+        `INSERT INTO modules (slug, position, name, level, dynamic, active, applicable_sectors, applicable_levels)
+         VALUES ($1, $2, $3, $4, $5, true, $6, $7)
          RETURNING id`,
-        [m.slug, m.position, m.name, m.level, m.dynamic]
+        [m.slug, m.position, m.name, m.level, m.dynamic, m.applicable_sectors, m.applicable_levels]
       );
       const modId = modRes.rows[0].id;
       modulesInserted++;
@@ -629,6 +652,31 @@ async function seedModulesIfEmpty() {
     return { seeded: true, modules: modulesInserted, sessions: sessionsInserted };
   } catch (err) {
     logger.error('Erreur seedModulesIfEmpty', { error: err.message });
+    return { error: err.message };
+  }
+}
+
+// v4 : applique les tags par défaut (applicable_sectors/applicable_levels)
+// aux modules existants dont les tags sont NULL.
+// Ne touche pas un module dont les tags ont déjà été définis manuellement.
+async function applyDefaultModuleTags() {
+  try {
+    let updated = 0;
+    for (const m of DEFAULT_MODULES) {
+      const r = await query(
+        `UPDATE modules
+         SET applicable_sectors = COALESCE(applicable_sectors, $2),
+             applicable_levels  = COALESCE(applicable_levels,  $3),
+             level = $4
+         WHERE slug = $1
+         RETURNING id`,
+        [m.slug, m.applicable_sectors, m.applicable_levels, m.level]
+      );
+      if (r.rowCount > 0) updated++;
+    }
+    return { ok: true, updated };
+  } catch (err) {
+    logger.error('Erreur applyDefaultModuleTags', { error: err.message });
     return { error: err.message };
   }
 }
