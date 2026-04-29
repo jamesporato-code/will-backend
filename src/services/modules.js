@@ -21,11 +21,22 @@ async function loadModules(force = false) {
   }
 
   try {
-    const modsRes = await query(
-      `SELECT id, slug, position, name, level, dynamic, active,
-              applicable_sectors, applicable_levels
-       FROM modules WHERE active = true ORDER BY position ASC`
-    );
+    // Tente de lire les colonnes v4 (applicable_sectors / applicable_levels).
+    // Si la migration v4 n'est pas encore passée en DB, on retombe sur la lecture sans tags.
+    let modsRes;
+    try {
+      modsRes = await query(
+        `SELECT id, slug, position, name, level, dynamic, active,
+                applicable_sectors, applicable_levels
+         FROM modules WHERE active = true ORDER BY position ASC`
+      );
+    } catch (e) {
+      logger.warn('loadModules : colonnes v4 absentes, fallback sans tags', { error: e.message });
+      modsRes = await query(
+        `SELECT id, slug, position, name, level, dynamic, active
+         FROM modules WHERE active = true ORDER BY position ASC`
+      );
+    }
     const sessRes = await query(
       `SELECT id, module_id, position, topic
        FROM module_sessions WHERE active = true ORDER BY module_id ASC, position ASC`
