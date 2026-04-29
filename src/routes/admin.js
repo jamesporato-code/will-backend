@@ -364,6 +364,69 @@ router.post('/reset-user/:id', adminAuth, async (req, res) => {
 });
 
 // ============================================
+// POST /api/admin/reset-all-users?confirm=yes - Reset onboarding de TOUS les users
+// Destructif : remet tout le monde à zéro (onboarding, parcours, plan trial).
+// Usage : refonte v4, restart prop. Nécessite ?confirm=yes pour éviter accidents.
+// ============================================
+router.post('/reset-all-users', adminAuth, async (req, res) => {
+  try {
+    if (req.query.confirm !== 'yes') {
+      return res.status(400).json({
+        error: 'Confirmation requise. Ajoute ?confirm=yes a l\'URL.',
+      });
+    }
+
+    const countBefore = await query('SELECT COUNT(*)::int AS n FROM users');
+    const totalUsers = countBefore.rows[0]?.n || 0;
+
+    const result = await query(`
+      UPDATE users SET
+        onboarding_step = 0,
+        onboarding_complete = false,
+        level = NULL,
+        job = NULL,
+        sector = NULL,
+        interests = NULL,
+        daily_opt_in = NULL,
+        preferred_hour = NULL,
+        preferred_minute = 0,
+        ia_frequency = NULL,
+        ia_goal = NULL,
+        ia_time_budget = NULL,
+        menu_quiz_step = 0,
+        free_text_context = NULL,
+        daily_message_count = 0,
+        plan = 'trial',
+        created_at = NOW(),
+        secondary_jobs = NULL,
+        ia_interest = NULL,
+        ia_interest_other = NULL,
+        trial_reminder_sent = false,
+        streak = 0,
+        current_module = 1,
+        module_progress = '{}'::jsonb,
+        trial_reminder_j5 = false,
+        trial_reminder_j6 = false,
+        trial_reminder_j7 = false,
+        trial_reminder_j14 = false,
+        last_message_date = NULL
+    `);
+
+    logger.warn('ALL USERS RESET by admin', { totalUsers, affected: result.rowCount });
+
+    res.json({
+      success: true,
+      message: 'Tous les utilisateurs ont ete reinitialises',
+      totalUsers,
+      affected: result.rowCount,
+    });
+  } catch (err) {
+    logger.error('Admin reset-all-users error', { error: err.message });
+    res.status(500).json({ error: 'Erreur serveur', detail: err.message });
+  }
+});
+
+// ============================================
 // POST /api/admin/trigger-daily/:id - Force le daily maintenant (debug)
 // Optionnel : ?first=1 pour simuler le 1er daily post-onboarding
 // ============================================
