@@ -37,6 +37,13 @@ async function showMainMenu(user, intro = null) {
     { id: 'menu_parcours', title: 'Ma session du jour', description: 'Relire ta session du jour' },
   ];
 
+  const profilRows = [
+    { id: 'menu_quiz', title: 'Mini-coaching', description: 'Affine ton profil en 3 questions' },
+    { id: 'menu_account', title: 'Mon compte', description: 'Plan, niveau, stats' },
+  ];
+  if (isPro) {
+    profilRows.push({ id: 'menu_change_module', title: 'Changer de module', description: 'Choisir un autre module du parcours' });
+  }
   const sections = [
     {
       title: isPro ? 'Aujourd\'hui' : 'Mon essai',
@@ -44,10 +51,7 @@ async function showMainMenu(user, intro = null) {
     },
     {
       title: 'Profil & coaching',
-      rows: [
-        { id: 'menu_quiz', title: 'Mini-coaching', description: 'Affine ton profil en 3 questions' },
-        { id: 'menu_account', title: 'Mon compte', description: 'Plan, niveau, stats' },
-      ],
+      rows: profilRows,
     },
     {
       title: 'Aide',
@@ -253,7 +257,110 @@ async function handleMenuButton(user, buttonId) {
     await startQuiz(user);
     return true;
   }
+  if (buttonId === 'menu_change_module') {
+    await startChangeModule(user);
+    return true;
+  }
   return false; // laisse les autres menu_* (actu/outil/prompt/account) passer
+}
+
+// ============================================
+// CHANGE MODULE (depuis /menu)
+// Flow : list modules filtrés pour le user → choix → confirmation reset → apply
+// IDs : cm_<slug>, cm_apply_<slug>, cm_cancel
+// ============================================
+async function startChangeModule(user) {
+  const { loadModulesForUser } = require('./modules');
+  const filtered = await loadModulesForUser(user);
+  if (filtered.length === 0) {
+    await whatsapp.sendButtons(
+      user.whatsapp_id,
+      'Aucun module disponible pour le moment.',
+      [{ id: 'menu_hub', title: 'Retour au menu' }]
+    );
+    return;
+  }
+  // Limite WhatsApp : 10 rows par section. On a déjà 10 modules figés en v4 → exactement bon.
+  const rows = filtered.slice(0, 10).map(m => ({
+    id: 'cm_' + m.slug,
+    title: m.position + '. ' + (m.name.length > 22 ? m.name.substring(0, 22) : m.name),
+    description: (m.sessions || 0) + ' sessions',
+  }));
+  await whatsapp.sendList(
+    user.whatsapp_id,
+    'Choisis le module sur lequel tu veux travailler. Tu repartiras au début de ce module.',
+    'Choisir',
+    [{ title: 'Modules de ton parcours', rows }]
+  );
+}
+
+async function askConfirmChangeModule(user, slug) {
+  const { loadModulesForUser } = require('./modules');
+  const filtered = await loadModulesForUser(user);
+  const mod = filtered.find(m => m.slug === slug);
+  if (!mod) {
+    await whatsapp.sendButtons(
+      user.whatsapp_id,
+      'Module introuvable.',
+      [{ id: 'menu_hub', title: 'Retour au menu' }]
+    );
+    return;
+  }
+  await whatsapp.sendButtons(
+    user.whatsapp_id,
+    'Tu veux passer au module *' + mod.name + '* (' + mod.sessions + ' sessions) ? Tu repartiras à la session 1 de ce module.',
+    [
+      { id: 'cm_apply_' + slug, title: 'Oui, ce module' },
+      { id: 'cm_cancel', title: 'Annuler' },
+    ]
+  );
+}
+
+async function applyChangeModule(user, slug) {
+  const { loadModulesForUser } = require('./modules');
+  const filtered = await loadModulesForUser(user);
+  const mod = filtered.find(m => m.slug === slug);
+  if (!mod) {
+    await whatsapp.sendText(user.whatsapp_id, 'Module introuvable.');
+    return;
+  }
+  // Reset la progression du module choisi à 0 et positionne current_module.
+  const progress = { ...(user.module_progress || {}) };
+  progress[mod.position] = 0;
+  await userService.updateProfile(user.id, {
+    current_module: mod.position,
+    module_progress: progress,
+  });
+  await whatsapp.sendButtons(
+    user.whatsapp_id,
+    'Tu es maintenant sur *' + mod.name + '* (session 1/' + mod.sessions + '). Le prochain message du jour démarrera ce module.',
+    [
+      { id: 'menu_parcours', title: 'Voir maintenant' },
+      { id: 'menu_hub', title: 'Retour au menu' },
+    ]
+  );
+}
+
+async function handleChangeModuleButton(user, id) {
+  if (id === 'menu_change_module') {
+    await startChangeModule(user);
+    return true;
+  }
+  if (id === 'cm_cancel') {
+    await showMainMenu(user);
+    return true;
+  }
+  if (id.startsWith('cm_apply_')) {
+    const slug = id.replace('cm_apply_', '');
+    await applyChangeModule(user, slug);
+    return true;
+  }
+  if (id.startsWith('cm_')) {
+    const slug = id.replace('cm_', '');
+    await askConfirmChangeModule(user, slug);
+    return true;
+  }
+  return false;
 }
 
 // ============================================
@@ -438,4 +545,5 @@ module.exports = {
   formatHour,
   handleChangeHourButton,
   handleChangeSectorButton,
+  handleChangeModuleButton,
 };

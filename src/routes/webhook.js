@@ -164,6 +164,15 @@ router.post('/', async (req, res) => {
       }
     }
 
+    // Change module (depuis /menu) : picker liste libre des modules + confirmation
+    {
+      const id = parsed.buttonId || parsed.listId;
+      if (id && (id === 'menu_change_module' || id.startsWith('cm_'))) {
+        const handled = await menu.handleChangeModuleButton(user, id);
+        if (handled) return;
+      }
+    }
+
     // Modifier mon profil (sous-menu liste) — ouvre la sendList
     if (parsed.buttonId === 'account_edit_profile') {
       await showEditProfileMenu(user);
