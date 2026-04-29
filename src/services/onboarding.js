@@ -567,4 +567,4 @@ async function createCheckoutUrl(user) {
   }
 }
 
-module.exports = { handleOnboarding, createCheckoutUrl };
+module.exports = { handleOnboarding, createCheckoutUrl, HOUR_ROWS_BY_PERIOD };

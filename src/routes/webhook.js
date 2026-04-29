@@ -178,6 +178,15 @@ router.post('/', async (req, res) => {
       return;
     }
 
+    // Change hour (depuis Mon compte) : picker 3 étapes via boutons + lists
+    {
+      const id = parsed.buttonId || parsed.listId;
+      if (id && (id === 'account_change_hour' || id.startsWith('chh_'))) {
+        const handled = await menu.handleChangeHourButton(user, id);
+        if (handled) return;
+      }
+    }
+
     // Mini-défi : boutons de fin (C'est fait / Je passe)
     if (parsed.buttonId === 'minidefi_done' || parsed.buttonId === 'minidefi_skip') {
       await handleMinidefiButton(user, parsed.buttonId);
@@ -218,10 +227,12 @@ async function handleMyAccount(user) {
   const limits = { trial: 15, pro: 'Illimité', cancelled: 0 };
 
   const stats = await getUserStats(user.id);
+  const hourLabel = menu.formatHour(user.preferred_hour, user.preferred_minute) || 'non défini';
   const info = '*Ton compte Will*\n\n' +
     'Plan : ' + (planNames[user.plan] || user.plan) + '\n' +
     'Niveau : ' + (user.level || 'débutant') + '\n' +
     'Domaine : ' + (user.job || 'Non renseigné') + '\n' +
+    'Heure du daily : ' + hourLabel + '\n' +
     'Messages par jour : ' + (limits[user.plan] || '?') + '\n' +
     'Utilisés aujourd\'hui : ' + (user.daily_message_count || 0) + '\n\n' +
     '*Ton activité*\n' +
@@ -233,11 +244,13 @@ async function handleMyAccount(user) {
   if (user.plan === 'pro') {
     await whatsapp.sendButtons(user.whatsapp_id, info, [
       { id: 'account_manage', title: 'Gérer mon abo' },
+      { id: 'account_change_hour', title: 'Changer mon heure' },
       { id: 'account_change_level', title: 'Changer niveau' },
     ]);
   } else {
     await whatsapp.sendButtons(user.whatsapp_id, info, [
       { id: 'plan_pro', title: 'Pro 6,99/mois' },
+      { id: 'account_change_hour', title: 'Changer mon heure' },
       { id: 'account_change_level', title: 'Changer niveau' },
     ], null, 'Pro pour tout débloquer');
   }
