@@ -145,11 +145,11 @@ router.post('/', async (req, res) => {
       if (handled) return;
     }
 
-    // Change hour (depuis Mon compte) : picker 3 étapes via boutons + lists
+    // Change hour (depuis Mon compte) : déclenche un free-text « awaiting_hour ».
     // IMPORTANT : avant le filtre account_/level_/plan_pro pour ne pas être intercepté.
     {
       const id = parsed.buttonId || parsed.listId;
-      if (id && (id === 'account_change_hour' || id.startsWith('chh_'))) {
+      if (id === 'account_change_hour') {
         const handled = await menu.handleChangeHourButton(user, id);
         if (handled) return;
       }
@@ -221,6 +221,12 @@ router.post('/', async (req, res) => {
     // Boutons de contenu (topic + daily)
     if (parsed.buttonId?.startsWith('topic_') || parsed.buttonId?.startsWith('daily_')) {
       await handleContentButton(user, parsed);
+      return;
+    }
+
+    // Free-text scopé : changement d'heure du daily (depuis Mon compte)
+    if (parsed.text && user.free_text_context === 'awaiting_hour') {
+      await menu.handleAwaitingHourText(user, parsed.text);
       return;
     }
 

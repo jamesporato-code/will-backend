@@ -8,7 +8,7 @@ const userService = require('./userService');
 const logger = require('../utils/logger');
 const { query } = require('../db/pool');
 const { getCachedResponse } = require('./redis');
-const { HOUR_ROWS_BY_PERIOD } = require('./onboarding');
+const { parseHourInput } = require('./onboarding');
 const { SECTORS, getSectorLabel, isValidSector } = require('./sectors');
 
 function formatHour(h, m) {
@@ -364,56 +364,36 @@ async function handleChangeModuleButton(user, id) {
 }
 
 // ============================================
-// CHANGE HOUR — picker 3 étapes (période → heure → minute)
-// Les ids encodent l'état pour éviter un state DB temporaire.
+// CHANGE HOUR — une seule étape (free-text)
+// On pose `free_text_context = 'awaiting_hour'` pour que le webhook
+// achemine la prochaine réponse texte vers handleAwaitingHourText.
 // ============================================
 async function startChangeHour(user) {
   const current = formatHour(user.preferred_hour, user.preferred_minute);
   const intro = current
-    ? 'Tu reçois ton message à ' + current + '. À quel moment de la journée veux-tu le recevoir maintenant ?'
-    : 'À quel moment de la journée veux-tu recevoir ton message ?';
-  await whatsapp.sendButtons(
-    user.whatsapp_id,
-    intro,
-    [
-      { id: 'chh_period_morning', title: 'Matin 5h-12h' },
-      { id: 'chh_period_afternoon', title: 'Aprem 13h-18h' },
-      { id: 'chh_period_evening', title: 'Soirée 19h-4h' },
-    ]
-  );
+    ? 'Tu reçois ton message à ' + current + '.\n\nÀ quelle heure veux-tu le recevoir maintenant ?\n\n' +
+      'Réponds simplement avec ton heure — par exemple : *8h*, *19h30*, *21h*, *22:00*.'
+    : 'À quelle heure veux-tu recevoir ton message quotidien ?\n\n' +
+      'Réponds simplement avec ton heure — par exemple : *8h*, *19h30*, *21h*, *22:00*.';
+  await userService.updateProfile(user.id, { free_text_context: 'awaiting_hour' });
+  await whatsapp.sendText(user.whatsapp_id, intro);
 }
 
-async function askChangeHourSelection(user, period) {
-  const baseRows = HOUR_ROWS_BY_PERIOD[period] || HOUR_ROWS_BY_PERIOD.morning;
-  const rows = baseRows.map(r => ({ ...r, id: r.id.replace('ob_hour_', 'chh_hour_') }));
-  await whatsapp.sendList(
-    user.whatsapp_id,
-    'Choisis l\'heure pile.',
-    'Choisir l\'heure',
-    [{ title: 'Heures', rows }]
-  );
-}
-
-async function askChangeMinuteSelection(user, hour) {
-  const hLabel = hour + 'h';
-  await whatsapp.sendList(
-    user.whatsapp_id,
-    'À quelle minute autour de ' + hLabel + ' ?',
-    'Choisir la minute',
-    [
-      { title: 'Quart d\'heure', rows: [
-        { id: 'chh_min_' + hour + '_0', title: hLabel + '00', description: 'Heure pile' },
-        { id: 'chh_min_' + hour + '_15', title: hLabel + '15', description: 'Et quart' },
-        { id: 'chh_min_' + hour + '_30', title: hLabel + '30', description: 'Et demi' },
-        { id: 'chh_min_' + hour + '_45', title: hLabel + '45', description: 'Moins le quart' },
-      ] },
-    ]
-  );
-}
-
-async function finishChangeHour(user, hour, minute) {
-  await userService.updateProfile(user.id, { preferred_hour: hour, preferred_minute: minute });
-  const label = formatHour(hour, minute);
+async function handleAwaitingHourText(user, text) {
+  const hm = parseHourInput(text);
+  if (!hm) {
+    await whatsapp.sendText(
+      user.whatsapp_id,
+      'Format non reconnu. Réessaie avec une heure simple — par exemple : *8h*, *19h30*, *21h*, *22:00*.'
+    );
+    return;
+  }
+  await userService.updateProfile(user.id, {
+    preferred_hour: hm.hour,
+    preferred_minute: hm.minute,
+    free_text_context: null,
+  });
+  const label = formatHour(hm.hour, hm.minute);
   await whatsapp.sendButtons(
     user.whatsapp_id,
     'C\'est noté. Tu recevras désormais ton message à ' + label + '.',
@@ -511,27 +491,6 @@ async function handleChangeHourButton(user, buttonId) {
     await startChangeHour(user);
     return true;
   }
-  if (buttonId.startsWith('chh_period_')) {
-    const period = buttonId.replace('chh_period_', '');
-    await askChangeHourSelection(user, period);
-    return true;
-  }
-  if (buttonId.startsWith('chh_hour_')) {
-    const hour = parseInt(buttonId.replace('chh_hour_', ''), 10);
-    if (!isNaN(hour)) {
-      await askChangeMinuteSelection(user, hour);
-    }
-    return true;
-  }
-  if (buttonId.startsWith('chh_min_')) {
-    const parts = buttonId.replace('chh_min_', '').split('_');
-    const hour = parseInt(parts[0], 10);
-    const minute = parseInt(parts[1], 10);
-    if (!isNaN(hour) && !isNaN(minute)) {
-      await finishChangeHour(user, hour, minute);
-    }
-    return true;
-  }
   return false;
 }
 
@@ -544,6 +503,7 @@ module.exports = {
   startQuiz,
   formatHour,
   handleChangeHourButton,
+  handleAwaitingHourText,
   handleChangeSectorButton,
   handleChangeModuleButton,
 };
