@@ -438,6 +438,9 @@ router.post('/migrate', adminAuth, async (req, res) => {
       // Normalisation level : drop 'advanced' (n'existe plus en v4)
       "UPDATE users SET level = 'intermediate' WHERE level = 'advanced'",
       "UPDATE modules SET level = 'intermediate' WHERE level = 'advanced'",
+      // v4 : migration users.level FR -> EN (l'onboarding stockait en FR avant)
+      "UPDATE users SET level = 'beginner'     WHERE level = 'debutant'",
+      "UPDATE users SET level = 'intermediate' WHERE level IN ('intermediaire', 'avance')",
       `CREATE TABLE IF NOT EXISTS modules (
         id SERIAL PRIMARY KEY,
         slug TEXT UNIQUE NOT NULL,

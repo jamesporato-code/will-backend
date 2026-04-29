@@ -20,7 +20,7 @@ async function migrate() {
         id SERIAL PRIMARY KEY,
         whatsapp_id VARCHAR(30) UNIQUE NOT NULL,
         display_name VARCHAR(100),
-        level VARCHAR(20) DEFAULT 'debutant',
+        level VARCHAR(20) DEFAULT 'beginner',
         job VARCHAR(100),
         interests VARCHAR(200),
         plan VARCHAR(20) DEFAULT 'trial',

@@ -3,36 +3,20 @@ const { updateProfile } = require('./userService');
 const { cacheResponse } = require('./redis');
 const logger = require('../utils/logger');
 const { query } = require('../db/pool');
+const { SECTORS, getSectorLabel } = require('./sectors');
 const Stripe = require('stripe');
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 // ============================================
-// SECTEURS (10 options)
+// SECTEURS — taxonomie figée v4 (10 secteurs)
+// La source de vérité est src/services/sectors.js
 // ============================================
-const SECTORS = [
-  { id: 'marketing', title: 'Marketing / Comm', description: 'Pub, contenu, réseaux sociaux' },
-  { id: 'tech', title: 'Tech / Dev / Data', description: 'Code, IA, data, produit, IT' },
-  { id: 'business', title: 'Business / Finance', description: 'Vente, gestion, conseil, compta' },
-  { id: 'creation', title: 'Création / Design', description: 'Graphisme, vidéo, UX, photo' },
-  { id: 'education', title: 'Éducation / Formation', description: 'Enseignement, e-learning, RH' },
-  { id: 'sante', title: 'Santé / Bien-être', description: 'Médical, pharma, coaching' },
-  { id: 'juridique', title: 'Droit / Immobilier', description: 'Juridique, notariat, immo' },
-  { id: 'artisanat', title: 'Artisanat / Commerce', description: 'Boutique, resto, artisan' },
-  { id: 'freelance', title: 'Freelance / Startup', description: 'Indépendant, entrepreneur' },
-  { id: 'autre', title: 'Autre secteur', description: 'Je précise après' },
-];
-
-function getSectorLabel(id) {
-  const s = SECTORS.find(x => x.id === id);
-  return s ? s.title : id;
-}
-
-async function sendSectorList(whatsappId, bodyText, buttonLabel, excludeIds = []) {
+async function sendSectorList(whatsappId, bodyText, buttonLabel, excludeSlugs = []) {
   const rows = SECTORS
-    .filter(s => !excludeIds.includes(s.id))
-    .map(s => ({ id: 'ob_sector_' + s.id, title: s.title, description: s.description }));
+    .filter(s => !excludeSlugs.includes(s.slug))
+    .map(s => ({ id: 'ob_sector_' + s.slug, title: s.label, description: s.description }));
   await whatsapp.sendList(
     whatsappId,
     bodyText,
@@ -104,9 +88,8 @@ async function handleOnboarding(user, parsed) {
       user.whatsapp_id,
       '*Question 1/5* — Quel est ton niveau actuel en IA ?',
       [
-        { id: 'ob_level_debutant', title: 'Débutant' },
-        { id: 'ob_level_intermediaire', title: 'Intermédiaire' },
-        { id: 'ob_level_avance', title: 'Avancé' },
+        { id: 'ob_level_beginner', title: 'Débutant' },
+        { id: 'ob_level_intermediate', title: 'Intermédiaire' },
       ],
       null,
       'Aucun niveau requis'
@@ -118,12 +101,15 @@ async function handleOnboarding(user, parsed) {
   // STEP 1 : niveau → secteur principal
   if (step === 1 && parsed.buttonId?.startsWith('ob_level_')) {
     const level = parsed.buttonId.replace('ob_level_', '');
+    if (!['beginner', 'intermediate'].includes(level)) {
+      await whatsapp.sendText(user.whatsapp_id, 'Choisis ton niveau avec les boutons ci-dessus.');
+      return true;
+    }
     await updateProfile(user.id, { level, onboarding_step: 2 });
 
     const levelMsg = {
-      debutant: 'Très bien. Je vais adapter le rythme pour poser des bases solides.',
-      intermediaire: 'Parfait. On va aller à l\'essentiel et construire sur tes acquis.',
-      avance: 'Compris. Je te pousserai sur les sujets avancés (agents, MCP, automatisations).',
+      beginner: 'Très bien. Je vais adapter le rythme pour poser des bases solides.',
+      intermediate: 'Parfait. On va aller à l\'essentiel et construire sur tes acquis.',
     };
     await whatsapp.sendText(user.whatsapp_id, levelMsg[level] || 'Noté.');
     await delay(1200);
@@ -138,8 +124,12 @@ async function handleOnboarding(user, parsed) {
 
   // STEP 2 : secteur principal → 2ème ?
   if (step === 2 && parsed.listId?.startsWith('ob_sector_')) {
-    const sectorId = parsed.listId.replace('ob_sector_', '');
-    await updateProfile(user.id, { job: getSectorLabel(sectorId), onboarding_step: 3 });
+    const sectorSlug = parsed.listId.replace('ob_sector_', '');
+    await updateProfile(user.id, {
+      sector: sectorSlug,
+      job: getSectorLabel(sectorSlug),
+      onboarding_step: 3,
+    });
 
     await whatsapp.sendButtons(
       user.whatsapp_id,
@@ -163,23 +153,23 @@ async function handleOnboarding(user, parsed) {
       return true;
     }
     await updateProfile(user.id, { onboarding_step: 4 });
-    const primaryLabel = user.job || '';
-    const primaryId = SECTORS.find(s => s.title === primaryLabel)?.id;
+    const result0 = await query('SELECT sector FROM users WHERE id = $1', [user.id]);
+    const primarySlug = result0.rows[0]?.sector;
     await sendSectorList(
       user.whatsapp_id,
       'Ton 2ème secteur ?',
       'Choisir',
-      primaryId ? [primaryId] : []
+      primarySlug ? [primarySlug] : []
     );
     return true;
   }
 
   // STEP 4 : 2ème secteur → 3ème ?
   if (step === 4 && parsed.listId?.startsWith('ob_sector_')) {
-    const sectorId = parsed.listId.replace('ob_sector_', '');
+    const sectorSlug = parsed.listId.replace('ob_sector_', '');
     const result = await query('SELECT secondary_jobs FROM users WHERE id = $1', [user.id]);
     const current = result.rows[0]?.secondary_jobs || [];
-    const newSecondary = Array.isArray(current) ? [...current, getSectorLabel(sectorId)] : [getSectorLabel(sectorId)];
+    const newSecondary = Array.isArray(current) ? [...current, getSectorLabel(sectorSlug)] : [getSectorLabel(sectorSlug)];
     await query('UPDATE users SET secondary_jobs = $1::jsonb WHERE id = $2', [JSON.stringify(newSecondary), user.id]);
     await updateProfile(user.id, { onboarding_step: 5 });
 
@@ -201,28 +191,28 @@ async function handleOnboarding(user, parsed) {
       await askIaInterest(user);
       return true;
     }
-    const result = await query('SELECT job, secondary_jobs FROM users WHERE id = $1', [user.id]);
-    const primaryId = SECTORS.find(s => s.title === result.rows[0]?.job)?.id;
+    const result = await query('SELECT sector, secondary_jobs FROM users WHERE id = $1', [user.id]);
+    const primarySlug = result.rows[0]?.sector;
     const secondaryTitles = result.rows[0]?.secondary_jobs || [];
-    const secondaryIds = SECTORS.filter(s => secondaryTitles.includes(s.title)).map(s => s.id);
-    const excludeIds = [primaryId, ...secondaryIds].filter(Boolean);
+    const secondarySlugs = SECTORS.filter(s => secondaryTitles.includes(s.label)).map(s => s.slug);
+    const excludeSlugs = [primarySlug, ...secondarySlugs].filter(Boolean);
 
     await updateProfile(user.id, { onboarding_step: 51 });
     await sendSectorList(
       user.whatsapp_id,
       'Ton 3ème secteur ?',
       'Choisir',
-      excludeIds
+      excludeSlugs
     );
     return true;
   }
 
   // STEP 51 : 3ème secteur → ia_interest
   if (step === 51 && parsed.listId?.startsWith('ob_sector_')) {
-    const sectorId = parsed.listId.replace('ob_sector_', '');
+    const sectorSlug = parsed.listId.replace('ob_sector_', '');
     const result = await query('SELECT secondary_jobs FROM users WHERE id = $1', [user.id]);
     const current = result.rows[0]?.secondary_jobs || [];
-    const newSecondary = Array.isArray(current) ? [...current, getSectorLabel(sectorId)] : [getSectorLabel(sectorId)];
+    const newSecondary = Array.isArray(current) ? [...current, getSectorLabel(sectorSlug)] : [getSectorLabel(sectorSlug)];
     await query('UPDATE users SET secondary_jobs = $1::jsonb WHERE id = $2', [JSON.stringify(newSecondary), user.id]);
     await updateProfile(user.id, { onboarding_step: 6 });
     await askIaInterest(user);
@@ -509,11 +499,14 @@ async function sendRecapAndPlan(user, hour, minute) {
   const interestLabel = row.ia_interest === 'other'
     ? (row.ia_interest_other || 'Autre')
     : getInterestLabel(row.ia_interest);
+  const levelDisplay = user.level === 'intermediate' ? 'Intermédiaire'
+    : user.level === 'beginner' ? 'Débutant'
+    : 'Débutant';
 
   const recapLines = [
     'Ton profil Will est calibré.',
     '',
-    'Niveau : ' + (user.level || 'débutant'),
+    'Niveau : ' + levelDisplay,
     'Secteur(s) : ' + allSectors,
     'Focus IA : ' + interestLabel,
   ];

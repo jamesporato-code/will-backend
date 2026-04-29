@@ -228,10 +228,13 @@ async function handleMyAccount(user) {
 
   const stats = await getUserStats(user.id);
   const hourLabel = menu.formatHour(user.preferred_hour, user.preferred_minute) || 'non défini';
+  const levelDisplay = user.level === 'intermediate' ? 'Intermédiaire'
+    : user.level === 'beginner' ? 'Débutant'
+    : 'Débutant';
   const info = '*Ton compte Will*\n\n' +
     'Plan : ' + (planNames[user.plan] || user.plan) + '\n' +
-    'Niveau : ' + (user.level || 'débutant') + '\n' +
-    'Domaine : ' + (user.job || 'Non renseigné') + '\n' +
+    'Niveau : ' + levelDisplay + '\n' +
+    'Secteur : ' + (user.job || 'Non renseigné') + '\n' +
     'Heure du daily : ' + hourLabel + '\n' +
     'Messages par jour : ' + (limits[user.plan] || '?') + '\n' +
     'Utilisés aujourd\'hui : ' + (user.daily_message_count || 0) + '\n\n' +
@@ -403,17 +406,18 @@ async function handleAccountAction(user, parsed) {
 
   if (parsed.buttonId === 'account_change_level') {
     await whatsapp.sendButtons(user.whatsapp_id, 'Quel est ton nouveau niveau ?', [
-      { id: 'level_debutant', title: 'Débutant' },
-      { id: 'level_intermediaire', title: 'Intermédiaire' },
-      { id: 'level_avance', title: 'Avancé' },
+      { id: 'level_beginner', title: 'Débutant' },
+      { id: 'level_intermediate', title: 'Intermédiaire' },
     ]);
     return;
   }
 
   if (parsed.buttonId?.startsWith('level_') && user.onboarding_complete) {
     const level = parsed.buttonId.replace('level_', '');
+    if (!['beginner', 'intermediate'].includes(level)) return;
     await userService.updateProfile(user.id, { level });
-    await whatsapp.sendText(user.whatsapp_id, 'Mis à jour. Ton niveau est maintenant : ' + level + '.');
+    const display = level === 'intermediate' ? 'Intermédiaire' : 'Débutant';
+    await whatsapp.sendText(user.whatsapp_id, 'Mis à jour. Ton niveau est maintenant : ' + display + '.');
     return;
   }
 

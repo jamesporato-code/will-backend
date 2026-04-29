@@ -16,7 +16,7 @@ const DAILY_CONTENT = [
   { dayOfWeek: 0, type: 'recap', name: 'Dimanche', offset: 6 },
 ];
 
-const LEVELS = ['debutant', 'intermediaire', 'avance'];
+const LEVELS = ['beginner', 'intermediate'];
 
 async function generateWeekContent() {
   const nextMonday = getNextMonday();
@@ -53,7 +53,7 @@ async function generateWeekContent() {
     }
   }
 
-  logger.info('Generation terminee (7 jours x 3 niveaux = 21 contenus)');
+  logger.info('Generation terminee (7 jours x 2 niveaux = 14 contenus)');
   process.exit(0);
 }
 
