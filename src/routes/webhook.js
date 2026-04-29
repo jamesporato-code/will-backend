@@ -145,8 +145,33 @@ router.post('/', async (req, res) => {
       if (handled) return;
     }
 
+    // Change hour (depuis Mon compte) : picker 3 étapes via boutons + lists
+    // IMPORTANT : avant le filtre account_/level_/plan_pro pour ne pas être intercepté.
+    {
+      const id = parsed.buttonId || parsed.listId;
+      if (id && (id === 'account_change_hour' || id.startsWith('chh_'))) {
+        const handled = await menu.handleChangeHourButton(user, id);
+        if (handled) return;
+      }
+    }
+
+    // Change sector (depuis Mon compte) : picker 10 secteurs + reset parcours
+    {
+      const id = parsed.buttonId || parsed.listId;
+      if (id && (id === 'account_change_sector' || id.startsWith('chs_'))) {
+        const handled = await menu.handleChangeSectorButton(user, id);
+        if (handled) return;
+      }
+    }
+
+    // Modifier mon profil (sous-menu liste) — ouvre la sendList
+    if (parsed.buttonId === 'account_edit_profile') {
+      await showEditProfileMenu(user);
+      return;
+    }
+
     // Account / plan actions
-    if (parsed.buttonId?.startsWith('account_') || parsed.buttonId === 'plan_pro' || parsed.buttonId?.startsWith('level_')) {
+    if (parsed.buttonId?.startsWith('account_') || parsed.listId?.startsWith('account_') || parsed.buttonId === 'plan_pro' || parsed.buttonId?.startsWith('level_')) {
       await handleAccountAction(user, parsed);
       return;
     }
@@ -176,15 +201,6 @@ router.post('/', async (req, res) => {
       }
       await handleProMenuChoice(user, id);
       return;
-    }
-
-    // Change hour (depuis Mon compte) : picker 3 étapes via boutons + lists
-    {
-      const id = parsed.buttonId || parsed.listId;
-      if (id && (id === 'account_change_hour' || id.startsWith('chh_'))) {
-        const handled = await menu.handleChangeHourButton(user, id);
-        if (handled) return;
-      }
     }
 
     // Mini-défi : boutons de fin (C'est fait / Je passe)
@@ -248,15 +264,30 @@ async function handleMyAccount(user) {
     await whatsapp.sendButtons(user.whatsapp_id, info, [
       { id: 'account_manage', title: 'Gérer mon abo' },
       { id: 'account_change_hour', title: 'Changer mon heure' },
-      { id: 'account_change_level', title: 'Changer niveau' },
+      { id: 'account_edit_profile', title: 'Modifier profil' },
     ]);
   } else {
     await whatsapp.sendButtons(user.whatsapp_id, info, [
       { id: 'plan_pro', title: 'Pro 6,99/mois' },
       { id: 'account_change_hour', title: 'Changer mon heure' },
-      { id: 'account_change_level', title: 'Changer niveau' },
+      { id: 'account_edit_profile', title: 'Modifier profil' },
     ], null, 'Pro pour tout débloquer');
   }
+}
+
+async function showEditProfileMenu(user) {
+  await whatsapp.sendList(
+    user.whatsapp_id,
+    'Que veux-tu modifier dans ton profil ?',
+    'Modifier',
+    [
+      { title: 'Profil', rows: [
+        { id: 'account_change_sector', title: 'Mon secteur', description: 'Changer le secteur de mon parcours' },
+        { id: 'account_change_level', title: 'Mon niveau', description: 'Débutant ou intermédiaire' },
+        { id: 'account_change_hour', title: 'L\'heure du daily', description: 'Quand je reçois mon message' },
+      ] },
+    ]
+  );
 }
 
 async function handleContentButton(user, parsed) {
@@ -404,7 +435,7 @@ async function handleAccountAction(user, parsed) {
     return;
   }
 
-  if (parsed.buttonId === 'account_change_level') {
+  if (parsed.buttonId === 'account_change_level' || parsed.listId === 'account_change_level') {
     await whatsapp.sendButtons(user.whatsapp_id, 'Quel est ton nouveau niveau ?', [
       { id: 'level_beginner', title: 'Débutant' },
       { id: 'level_intermediate', title: 'Intermédiaire' },

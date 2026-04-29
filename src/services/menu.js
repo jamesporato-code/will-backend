@@ -9,6 +9,7 @@ const logger = require('../utils/logger');
 const { query } = require('../db/pool');
 const { getCachedResponse } = require('./redis');
 const { HOUR_ROWS_BY_PERIOD } = require('./onboarding');
+const { SECTORS, getSectorLabel, isValidSector } = require('./sectors');
 
 function formatHour(h, m) {
   if (h === null || h === undefined || h === '') return null;
@@ -316,6 +317,88 @@ async function finishChangeHour(user, hour, minute) {
   );
 }
 
+// ============================================
+// CHANGE SECTOR (depuis Mon compte)
+// Flow : list 10 secteurs → choix → confirmation reset parcours / continuer
+// IDs : chs_<slug>, chs_reset_yes, chs_reset_no
+// ============================================
+async function startChangeSector(user) {
+  const currentLabel = user.sector ? getSectorLabel(user.sector) : (user.job || null);
+  const intro = currentLabel
+    ? 'Ton secteur actuel : ' + currentLabel + '.\nQuel secteur veux-tu maintenant ?'
+    : 'Quel secteur veux-tu pour ton parcours ?';
+  const rows = SECTORS
+    .filter(s => s.slug !== user.sector)
+    .map(s => ({ id: 'chs_' + s.slug, title: s.label, description: s.description }));
+  await whatsapp.sendList(
+    user.whatsapp_id,
+    intro,
+    'Choisir',
+    [{ title: 'Secteurs', rows }]
+  );
+}
+
+async function askResetParcoursAfterSector(user, newSlug) {
+  const newLabel = getSectorLabel(newSlug);
+  await whatsapp.sendButtons(
+    user.whatsapp_id,
+    'Nouveau secteur : ' + newLabel + '.\n\nVeux-tu repartir du début du parcours pour ce secteur, ou continuer où tu en es ?',
+    [
+      { id: 'chs_reset_yes_' + newSlug, title: 'Repartir au début' },
+      { id: 'chs_reset_no_' + newSlug, title: 'Continuer où je suis' },
+    ]
+  );
+}
+
+async function applySectorChange(user, newSlug, resetParcours) {
+  const updates = {
+    sector: newSlug,
+    job: getSectorLabel(newSlug),
+  };
+  if (resetParcours) {
+    updates.current_module = 1;
+    updates.module_progress = {};
+  }
+  await userService.updateProfile(user.id, updates);
+  const txt = resetParcours
+    ? 'Secteur mis à jour. Tu repars du module 1 du parcours adapté à ton nouveau secteur.'
+    : 'Secteur mis à jour. Tu continues là où tu en étais ; les prochains modules seront adaptés à ton nouveau secteur.';
+  await whatsapp.sendButtons(
+    user.whatsapp_id,
+    txt,
+    [
+      { id: 'menu_parcours', title: 'Ma session du jour' },
+      { id: 'menu_hub', title: 'Retour au menu' },
+    ]
+  );
+}
+
+async function handleChangeSectorButton(user, id) {
+  if (id === 'account_change_sector') {
+    await startChangeSector(user);
+    return true;
+  }
+  if (id.startsWith('chs_reset_yes_')) {
+    const slug = id.replace('chs_reset_yes_', '');
+    if (!isValidSector(slug)) return true;
+    await applySectorChange(user, slug, true);
+    return true;
+  }
+  if (id.startsWith('chs_reset_no_')) {
+    const slug = id.replace('chs_reset_no_', '');
+    if (!isValidSector(slug)) return true;
+    await applySectorChange(user, slug, false);
+    return true;
+  }
+  if (id.startsWith('chs_')) {
+    const slug = id.replace('chs_', '');
+    if (!isValidSector(slug)) return true;
+    await askResetParcoursAfterSector(user, slug);
+    return true;
+  }
+  return false;
+}
+
 async function handleChangeHourButton(user, buttonId) {
   if (buttonId === 'account_change_hour') {
     await startChangeHour(user);
@@ -354,4 +437,5 @@ module.exports = {
   startQuiz,
   formatHour,
   handleChangeHourButton,
+  handleChangeSectorButton,
 };
