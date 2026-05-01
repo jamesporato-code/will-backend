@@ -128,7 +128,7 @@ async function sendDailyForUser(userId, opts = {}) {
         const firstName = user.display_name?.split(' ')[0] || 'toi';
         try {
           await whatsapp.sendTemplate(user.whatsapp_id, templateName, 'fr', { first_name: firstName });
-          await query('UPDATE users SET pending_daily = true WHERE id = $1', [userId]);
+          await query("UPDATE users SET pending_action = 'daily' WHERE id = $1", [userId]);
           logger.info('Template reminder envoye (hors fenetre 24h)', { userId });
           return { ok: true, type: 'template_reminder' };
         } catch (err) {
@@ -498,79 +498,112 @@ async function updateStreak(user) {
 
 // ============================================
 // RELANCES TRIAL : J+5, J+6, J+7, J+14
+// Definitions centralisees : un seul endroit ou modifier les copy + ranges.
 // ============================================
+const TRIAL_REMINDERS = {
+  j5: {
+    minDays: 5, maxDays: 6, field: 'trial_reminder_j5',
+    body: (name) => (name ? 'Bonjour ' + name + '.' : 'Bonjour.') + '\n\n' +
+      'Plus que 2 jours pour profiter de ton essai gratuit.\n\n' +
+      'Tu as commencé à découvrir l\'IA avec le Module 1. Pour continuer le parcours qui s\'enrichit en continu et ne pas perdre ton élan, passe Pro.',
+  },
+  j6: {
+    minDays: 6, maxDays: 7, field: 'trial_reminder_j6',
+    body: (name) => (name ? name + ', ' : '') +
+      'dernier jour de ton essai gratuit.\n\n' +
+      'Demain ton accès s\'arrête. Pour garder ton parcours sans interruption :',
+  },
+  j7: {
+    minDays: 7, maxDays: 8, field: 'trial_reminder_j7',
+    body: (name) => 'Ton essai gratuit est terminé.\n\n' +
+      (name ? name + ', ' : '') +
+      'merci d\'avoir testé Will. Pour continuer à apprendre l\'IA au quotidien (parcours qui s\'enrichit en continu, actu, outils, prompts) :\n\n' +
+      'Pro : 6,99 €/mois, sans engagement.',
+  },
+  j14: {
+    minDays: 14, maxDays: 15, field: 'trial_reminder_j14',
+    body: (name) => (name ? name + ', ' : '') +
+      'ça fait 2 semaines que ton essai Will est terminé.\n\n' +
+      'L\'IA évolue vite. Si tu veux remettre le pied à l\'étrier, c\'est le moment.\n\n' +
+      'Dernier rappel, après je te laisse tranquille.',
+  },
+};
+
 async function sendTrialReminders() {
   try {
-    await sendReminderBatch(5, 6,
-      (name) => (name ? 'Bonjour ' + name + '.' : 'Bonjour.') + '\n\n' +
-        'Plus que 2 jours pour profiter de ton essai gratuit.\n\n' +
-        'Tu as commencé à découvrir l\'IA avec le Module 1. Pour continuer le parcours qui s\'enrichit en continu et ne pas perdre ton élan, passe Pro.',
-      'trial_reminder_j5'
-    );
-
-    await sendReminderBatch(6, 7,
-      (name) => (name ? name + ', ' : '') +
-        'dernier jour de ton essai gratuit.\n\n' +
-        'Demain ton accès s\'arrête. Pour garder ton parcours sans interruption :',
-      'trial_reminder_j6'
-    );
-
-    await sendReminderBatch(7, 8,
-      (name) => 'Ton essai gratuit est terminé.\n\n' +
-        (name ? name + ', ' : '') +
-        'merci d\'avoir testé Will. Pour continuer à apprendre l\'IA au quotidien (parcours qui s\'enrichit en continu, actu, outils, prompts) :\n\n' +
-        'Pro : 6,99 €/mois, sans engagement.',
-      'trial_reminder_j7'
-    );
-
-    await sendReminderBatch(14, 15,
-      (name) => (name ? name + ', ' : '') +
-        'ça fait 2 semaines que ton essai Will est terminé.\n\n' +
-        'L\'IA évolue vite. Si tu veux remettre le pied à l\'étrier, c\'est le moment.\n\n' +
-        'Dernier rappel, après je te laisse tranquille.',
-      'trial_reminder_j14'
-    );
+    for (const stage of Object.keys(TRIAL_REMINDERS)) {
+      await sendReminderBatch(stage);
+    }
   } catch (err) {
     logger.error('Erreur cron trial reminders', { error: err.message });
   }
 }
 
-async function sendReminderBatch(minDays, maxDays, messageBuilder, reminderField) {
+async function sendReminderBatch(stage) {
+  const def = TRIAL_REMINDERS[stage];
+  if (!def) return;
   try {
     const result = await query(
       `SELECT id, whatsapp_id, display_name FROM users
        WHERE plan = 'trial'
        AND onboarding_complete = true
-       AND created_at <= NOW() - INTERVAL '${minDays} days'
-       AND created_at > NOW() - INTERVAL '${maxDays} days'
-       AND (${reminderField} IS NULL OR ${reminderField} = false)`,
+       AND created_at <= NOW() - INTERVAL '${def.minDays} days'
+       AND created_at > NOW() - INTERVAL '${def.maxDays} days'
+       AND (${def.field} IS NULL OR ${def.field} = false)`,
       []
     );
 
     for (const user of result.rows) {
       try {
-        const name = user.display_name?.split(' ')[0] || '';
-        const msg = messageBuilder(name);
+        // Hors fenetre 24h Meta : envoie le template "ta session est prete" et stocke
+        // le stage en attente pour le restituer quand le user repondra.
+        const templateName = process.env.WHATSAPP_TEMPLATE_DAILY_REMINDER;
+        if (templateName) {
+          const within = await isWithin24hWindow(user.id);
+          if (!within) {
+            const firstName = user.display_name?.split(' ')[0] || 'toi';
+            await whatsapp.sendTemplate(user.whatsapp_id, templateName, 'fr', { first_name: firstName });
+            await query(
+              `UPDATE users SET pending_action = $1, ${def.field} = true WHERE id = $2`,
+              ['trial_' + stage, user.id]
+            );
+            logger.info('Trial reminder template envoye (hors fenetre 24h)', { userId: user.id, stage });
+            await new Promise(r => setTimeout(r, 500));
+            continue;
+          }
+        }
 
-        await whatsapp.sendButtons(user.whatsapp_id, msg, [
-          { id: 'plan_pro', title: 'Passer Pro 6,99' },
-        ], null, 'Sans engagement');
-
-        await query(`UPDATE users SET ${reminderField} = true WHERE id = $1`, [user.id]);
-        logger.info('Trial reminder sent', { userId: user.id, type: reminderField });
+        // Fenetre ouverte (ou pas de template configure) : envoi free-form direct.
+        await sendTrialReminderFreeForm(user, stage);
+        await query(`UPDATE users SET ${def.field} = true WHERE id = $1`, [user.id]);
+        logger.info('Trial reminder sent', { userId: user.id, stage });
         await new Promise(r => setTimeout(r, 500));
       } catch (err) {
-        logger.error('Erreur reminder', { userId: user.id, type: reminderField, error: err.message });
+        logger.error('Erreur reminder', { userId: user.id, stage, error: err.message });
       }
     }
   } catch (err) {
-    logger.error('Erreur batch reminder ' + reminderField, { error: err.message });
+    logger.error('Erreur batch reminder ' + stage, { error: err.message });
   }
+}
+
+// Envoi free-form du contenu d'un trial reminder. Utilise par le cron quand la
+// fenetre 24h est ouverte, et par le webhook quand un user repond a un template
+// alors qu'un trial reminder etait en attente.
+async function sendTrialReminderFreeForm(user, stage) {
+  const def = TRIAL_REMINDERS[stage];
+  if (!def) return;
+  const name = user.display_name?.split(' ')[0] || '';
+  const msg = def.body(name);
+  await whatsapp.sendButtons(user.whatsapp_id, msg, [
+    { id: 'plan_pro', title: 'Passer Pro 6,99' },
+  ], null, 'Sans engagement');
 }
 
 module.exports = {
   startDailyCron,
   sendDailyMessages,
   sendDailyForUser,
+  sendTrialReminderFreeForm,
   handleProMenuChoice,
 };

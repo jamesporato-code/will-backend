@@ -502,6 +502,12 @@ router.post('/migrate', adminAuth, async (req, res) => {
       // Template WhatsApp hors fenetre 24h
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_user_message_at TIMESTAMP",
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_daily BOOLEAN DEFAULT false",
+      // pending_action TEXT : 'daily' | 'trial_j5' | 'trial_j6' | 'trial_j7' | 'trial_j14'
+      // Remplace pending_daily (qui ne supportait que le daily) par un champ qui
+      // sait quoi delivrer quand le user repond au template.
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_action TEXT",
+      // Migration : les users avec pending_daily=true heritent de pending_action='daily'
+      "UPDATE users SET pending_action = 'daily' WHERE pending_daily = true AND pending_action IS NULL",
       // Cron tourne par quarts d'heure → snap preferred_minute aux slots 0/15/30/45.
       // Sans ça les users qui ont tape "9h05" en onboarding ne recoivent jamais leur daily.
       `UPDATE users

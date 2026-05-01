@@ -243,13 +243,25 @@ router.post('/', async (req, res) => {
       return;
     }
 
-    // Pending daily : un template "ta session est prete" a ete envoye hors fenetre 24h.
-    // Le user vient de repondre (par bouton quick-reply ou texte libre) → fenetre rouverte,
-    // on lui livre maintenant la session du jour.
-    if (parsed.text && user.pending_daily) {
-      await userService.updateProfile(user.id, { pending_daily: false });
-      const result = await sendDailyForUser(user.id);
-      if (result.ok) return;
+    // Pending action : un template "ta session est prete" a ete envoye hors fenetre 24h
+    // (daily ou trial reminder). Le user vient de repondre → fenetre rouverte, on
+    // delivre le contenu reel maintenant.
+    if (parsed.text && (user.pending_action || user.pending_daily)) {
+      const action = user.pending_action || (user.pending_daily ? 'daily' : null);
+      await userService.updateProfile(user.id, { pending_action: null, pending_daily: false });
+      if (action === 'daily') {
+        const result = await sendDailyForUser(user.id, { skipWindowCheck: true });
+        if (result.ok) return;
+      } else if (action && action.startsWith('trial_')) {
+        const stage = action.substring('trial_'.length);
+        try {
+          const { sendTrialReminderFreeForm } = require('../cron/scheduler');
+          await sendTrialReminderFreeForm(user, stage);
+          return;
+        } catch (err) {
+          logger.error('Erreur livraison trial reminder differe', { userId: user.id, stage, error: err.message });
+        }
+      }
       // si echec on tombe sur le fallback menu
     }
 
