@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const axios = require('axios');
 const { query } = require('../db/pool');
 const logger = require('../utils/logger');
 
@@ -1409,6 +1410,76 @@ router.get('/payment-issues', adminAuth, async (req, res) => {
   } catch (err) {
     logger.error('Admin payment-issues error', { error: err.message });
     res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ============================================
+// WHATSAPP TEMPLATES (admin) — soumet/liste les templates Meta via l'API Cloud.
+// Necessite que WHATSAPP_ACCESS_TOKEN ait la permission whatsapp_business_management.
+// ============================================
+const META_GRAPH = 'https://graph.facebook.com/v21.0';
+
+async function fetchWabaId() {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  if (!token || !phoneId) throw new Error('WHATSAPP_ACCESS_TOKEN ou WHATSAPP_PHONE_NUMBER_ID manquant');
+  const res = await axios.get(
+    `${META_GRAPH}/${phoneId}?fields=whatsapp_business_account_id,display_phone_number,verified_name`,
+    { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 }
+  );
+  const wabaId = res.data?.whatsapp_business_account_id;
+  if (!wabaId) throw new Error('Impossible de recuperer le WABA ID : ' + JSON.stringify(res.data));
+  return { wabaId, phone: res.data };
+}
+
+router.get('/whatsapp-templates', adminAuth, async (req, res) => {
+  try {
+    const { wabaId, phone } = await fetchWabaId();
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    const list = await axios.get(
+      `${META_GRAPH}/${wabaId}/message_templates?limit=100`,
+      { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 }
+    );
+    res.json({ wabaId, phone, templates: list.data?.data || [], paging: list.data?.paging });
+  } catch (err) {
+    logger.error('Admin whatsapp-templates GET error', { error: err.message, response: err.response?.data });
+    res.status(500).json({ error: err.message, response: err.response?.data });
+  }
+});
+
+router.post('/whatsapp-templates', adminAuth, async (req, res) => {
+  try {
+    const { wabaId } = await fetchWabaId();
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+
+    // Payload par defaut : will_daily_reminder (UTILITY, fr, body avec {{1}} + footer + 1 quick reply)
+    const payload = req.body && Object.keys(req.body).length > 0 ? req.body : {
+      name: 'will_daily_reminder',
+      language: 'fr',
+      category: 'UTILITY',
+      components: [
+        {
+          type: 'BODY',
+          text: 'Bonjour {{1}}, ta session Will du jour est prête. Réponds pour la recevoir.',
+          example: { body_text: [['James']] },
+        },
+        { type: 'FOOTER', text: 'Will · coach IA' },
+        {
+          type: 'BUTTONS',
+          buttons: [{ type: 'QUICK_REPLY', text: 'Recevoir ma session' }],
+        },
+      ],
+    };
+
+    const created = await axios.post(
+      `${META_GRAPH}/${wabaId}/message_templates`,
+      payload,
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 15000 }
+    );
+    res.json({ success: true, wabaId, payload, response: created.data });
+  } catch (err) {
+    logger.error('Admin whatsapp-templates POST error', { error: err.message, response: err.response?.data });
+    res.status(500).json({ error: err.message, response: err.response?.data });
   }
 });
 
