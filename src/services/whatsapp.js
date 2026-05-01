@@ -51,15 +51,20 @@ async function sendButtons(to, bodyText, buttons, headerText, footerText) {
 }
 
 // Envoi d'un template approuve Meta (utilise pour ouvrir/relancer hors fenetre 24h).
-// `bodyParams` est un tableau de strings qui remplace {{1}}, {{2}}, etc dans le body.
-async function sendTemplate(to, name, language = 'fr', bodyParams = []) {
-  logger.info('WhatsApp sendTemplate CALLED', { to, name, language, paramCount: bodyParams.length });
+// `params` accepte deux formes :
+//   - Object  : { first_name: 'James' } → variables nommees {{first_name}}
+//   - Array   : ['James']               → variables positionnelles {{1}} (legacy)
+// Meta force maintenant les nommees pour les nouveaux templates.
+async function sendTemplate(to, name, language = 'fr', params = []) {
+  const isNamed = params && !Array.isArray(params) && typeof params === 'object';
+  const paramCount = isNamed ? Object.keys(params).length : params.length;
+  logger.info('WhatsApp sendTemplate CALLED', { to, name, language, paramCount, named: isNamed });
   const template = { name, language: { code: language } };
-  if (bodyParams.length > 0) {
-    template.components = [{
-      type: 'body',
-      parameters: bodyParams.map(p => ({ type: 'text', text: String(p) })),
-    }];
+  if (paramCount > 0) {
+    const parameters = isNamed
+      ? Object.entries(params).map(([key, val]) => ({ type: 'text', parameter_name: key, text: String(val) }))
+      : params.map(p => ({ type: 'text', text: String(p) }));
+    template.components = [{ type: 'body', parameters }];
   }
   try {
     const res = await axios.post(BASE_URL, {

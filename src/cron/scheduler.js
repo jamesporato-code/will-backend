@@ -127,7 +127,7 @@ async function sendDailyForUser(userId, opts = {}) {
       if (!within) {
         const firstName = user.display_name?.split(' ')[0] || 'toi';
         try {
-          await whatsapp.sendTemplate(user.whatsapp_id, templateName, 'fr', [firstName]);
+          await whatsapp.sendTemplate(user.whatsapp_id, templateName, 'fr', { first_name: firstName });
           await query('UPDATE users SET pending_daily = true WHERE id = $1', [userId]);
           logger.info('Template reminder envoye (hors fenetre 24h)', { userId });
           return { ok: true, type: 'template_reminder' };
