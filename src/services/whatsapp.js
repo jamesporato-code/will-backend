@@ -50,6 +50,29 @@ async function sendButtons(to, bodyText, buttons, headerText, footerText) {
   }
 }
 
+// Envoi d'un template approuve Meta (utilise pour ouvrir/relancer hors fenetre 24h).
+// `bodyParams` est un tableau de strings qui remplace {{1}}, {{2}}, etc dans le body.
+async function sendTemplate(to, name, language = 'fr', bodyParams = []) {
+  logger.info('WhatsApp sendTemplate CALLED', { to, name, language, paramCount: bodyParams.length });
+  const template = { name, language: { code: language } };
+  if (bodyParams.length > 0) {
+    template.components = [{
+      type: 'body',
+      parameters: bodyParams.map(p => ({ type: 'text', text: String(p) })),
+    }];
+  }
+  try {
+    const res = await axios.post(BASE_URL, {
+      messaging_product: 'whatsapp', to, type: 'template', template,
+    }, { headers, timeout: 15000 });
+    logger.info('WhatsApp sendTemplate SUCCESS', { to, name, status: res.status, responseData: JSON.stringify(res.data) });
+    return res.data;
+  } catch (err) {
+    logger.error('WhatsApp sendTemplate FAILED', { to, name, code: err.code, status: err.response?.status, error: JSON.stringify(err.response?.data || err.message) });
+    throw err;
+  }
+}
+
 async function sendList(to, bodyText, buttonLabel, sections, headerText) {
   logger.info('WhatsApp sendList CALLED', { to, bodyTextLength: bodyText?.length });
   const interactive = {
@@ -105,8 +128,13 @@ function parseWebhookMessage(body) {
         parsed.listId = message.interactive.list_reply.id;
       }
     }
+    // Quick-reply d'un template approuve (clic sur un bouton de template)
+    if (message.type === 'button') {
+      parsed.text = message.button?.text;
+      parsed.buttonPayload = message.button?.payload;
+    }
     return parsed;
   } catch (err) { logger.error('Erreur parsing webhook', err); return null; }
 }
 
-module.exports = { sendText, sendButtons, sendList, markAsRead, parseWebhookMessage };
+module.exports = { sendText, sendButtons, sendList, sendTemplate, markAsRead, parseWebhookMessage };

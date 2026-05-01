@@ -71,6 +71,10 @@ router.post('/', async (req, res) => {
     await whatsapp.markAsRead(parsed.messageId);
     const user = await userService.findOrCreateUser(parsed.from, parsed.displayName);
 
+    // Track la fenetre 24h Meta : tout message entrant rouvre la fenetre.
+    // Le scheduler s'en sert pour decider entre free-form et template.
+    await userService.touchLastUserMessage(user.id);
+
     // === REDIRECT POST-PAIEMENT (texte non fiable, juste UX) ===
     if (parsed.text?.startsWith('paiement_confirme_')) {
       logger.info('Redirect post-paiement reçu (UX only, no plan change)', { userId: user.id });
@@ -237,6 +241,16 @@ router.post('/', async (req, res) => {
     if (parsed.text && user.free_text_context === 'awaiting_minidefi') {
       await handleMinidefiResponse(user, parsed.text);
       return;
+    }
+
+    // Pending daily : un template "ta session est prete" a ete envoye hors fenetre 24h.
+    // Le user vient de repondre (par bouton quick-reply ou texte libre) → fenetre rouverte,
+    // on lui livre maintenant la session du jour.
+    if (parsed.text && user.pending_daily) {
+      await userService.updateProfile(user.id, { pending_daily: false });
+      const result = await sendDailyForUser(user.id);
+      if (result.ok) return;
+      // si echec on tombe sur le fallback menu
     }
 
     // Texte libre hors-contexte → redirige vers le hub /menu (out-of-scope response Meta)

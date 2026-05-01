@@ -47,6 +47,18 @@ async function incrementDailyCount(userId) {
   );
 }
 
+// Met a jour le timestamp du dernier message entrant (pour le calcul de fenetre 24h Meta).
+async function touchLastUserMessage(userId) {
+  try {
+    await pool.query(
+      'UPDATE users SET last_user_message_at = NOW() WHERE id = $1',
+      [userId]
+    );
+  } catch (err) {
+    // Silent : ne doit jamais bloquer la reception d'un message
+  }
+}
+
 async function updateProfile(userId, updates) {
   const allowed = ['name', 'display_name', 'job', 'sector', 'level', 'interests', 'plan',
     'onboarding_complete', 'onboarding_step', 'stripe_customer_id',
@@ -54,7 +66,7 @@ async function updateProfile(userId, updates) {
     'ia_interest', 'ia_interest_other', 'daily_opt_in',
     'current_module', 'module_progress', 'streak', 'secondary_jobs',
     'ia_frequency', 'ia_goal', 'ia_time_budget', 'menu_quiz_step',
-    'free_text_context'];
+    'free_text_context', 'pending_daily'];
 
   const fields = Object.keys(updates).filter(k => allowed.includes(k));
   if (fields.length === 0) return;
@@ -119,6 +131,7 @@ module.exports = {
   findOrCreateUser,
   canSendMessage,
   incrementDailyCount,
+  touchLastUserMessage,
   updateProfile,
   findByStripeCustomerId,
   saveMessage,

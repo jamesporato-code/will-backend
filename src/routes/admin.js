@@ -498,6 +498,9 @@ router.post('/migrate', adminAuth, async (req, res) => {
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS sector TEXT",
       "ALTER TABLE modules ADD COLUMN IF NOT EXISTS applicable_sectors TEXT[]",
       "ALTER TABLE modules ADD COLUMN IF NOT EXISTS applicable_levels TEXT[]",
+      // Template WhatsApp hors fenetre 24h
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_user_message_at TIMESTAMP",
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_daily BOOLEAN DEFAULT false",
       // Cron tourne par quarts d'heure → snap preferred_minute aux slots 0/15/30/45.
       // Sans ça les users qui ont tape "9h05" en onboarding ne recoivent jamais leur daily.
       `UPDATE users

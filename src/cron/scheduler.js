@@ -117,6 +117,27 @@ async function sendDailyForUser(userId, opts = {}) {
 
     if (!user.whatsapp_id) return { ok: false, error: 'user has no whatsapp_id' };
 
+    // Hors fenetre 24h Meta : envoie un template approuve "ta session est prete"
+    // au lieu du free-form, qui serait silencieusement bloque par WhatsApp.
+    // - opts.first : exclu (juste apres onboarding, fenetre ouverte)
+    // - opts.skipWindowCheck : exclu (caller force le free-form, ex: reponse au template)
+    const templateName = process.env.WHATSAPP_TEMPLATE_DAILY_REMINDER;
+    if (templateName && !opts.first && !opts.skipWindowCheck) {
+      const within = await isWithin24hWindow(userId);
+      if (!within) {
+        const firstName = user.display_name?.split(' ')[0] || 'toi';
+        try {
+          await whatsapp.sendTemplate(user.whatsapp_id, templateName, 'fr', [firstName]);
+          await query('UPDATE users SET pending_daily = true WHERE id = $1', [userId]);
+          logger.info('Template reminder envoye (hors fenetre 24h)', { userId });
+          return { ok: true, type: 'template_reminder' };
+        } catch (err) {
+          logger.error('Echec envoi template, on laisse tomber', { userId, error: err.message });
+          return { ok: false, error: 'template send failed: ' + err.message };
+        }
+      }
+    }
+
     await updateStreak(user);
 
     if (user.plan === 'trial') {
@@ -129,6 +150,23 @@ async function sendDailyForUser(userId, opts = {}) {
   } catch (err) {
     logger.error('sendDailyForUser exception', { userId, error: err.message, stack: err.stack });
     return { ok: false, error: err.message };
+  }
+}
+
+// Verifie si le user a envoye un message dans les 24 dernieres heures (fenetre Meta).
+// En dehors, on doit passer par un template approuve sinon WhatsApp drop le message.
+// `last_user_message_at` est mis a jour par le webhook sur chaque message entrant.
+async function isWithin24hWindow(userId) {
+  try {
+    const result = await query(
+      `SELECT 1 FROM users WHERE id = $1 AND last_user_message_at >= NOW() - INTERVAL '24 hours' LIMIT 1`,
+      [userId]
+    );
+    return result.rows.length > 0;
+  } catch (err) {
+    logger.error('Erreur check 24h window', { userId, error: err.message });
+    // En cas d'erreur, on assume ouverte pour eviter le spam de templates payants
+    return true;
   }
 }
 
