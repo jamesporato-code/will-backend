@@ -1423,11 +1423,16 @@ async function fetchWabaId() {
   const token = process.env.WHATSAPP_ACCESS_TOKEN;
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   if (!token || !phoneId) throw new Error('WHATSAPP_ACCESS_TOKEN ou WHATSAPP_PHONE_NUMBER_ID manquant');
+  // Permet d'override via env pour debug ou comptes multi-WABA
+  if (process.env.WHATSAPP_BUSINESS_ACCOUNT_ID) {
+    return { wabaId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID, phone: { source: 'env' } };
+  }
+  // Le champ correct sur le phone number node est `whatsapp_business_account` (objet) puis .id.
   const res = await axios.get(
-    `${META_GRAPH}/${phoneId}?fields=whatsapp_business_account_id,display_phone_number,verified_name`,
+    `${META_GRAPH}/${phoneId}?fields=display_phone_number,verified_name,whatsapp_business_account{id,name}`,
     { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 }
   );
-  const wabaId = res.data?.whatsapp_business_account_id;
+  const wabaId = res.data?.whatsapp_business_account?.id;
   if (!wabaId) throw new Error('Impossible de recuperer le WABA ID : ' + JSON.stringify(res.data));
   return { wabaId, phone: res.data };
 }
