@@ -498,6 +498,18 @@ router.post('/migrate', adminAuth, async (req, res) => {
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS sector TEXT",
       "ALTER TABLE modules ADD COLUMN IF NOT EXISTS applicable_sectors TEXT[]",
       "ALTER TABLE modules ADD COLUMN IF NOT EXISTS applicable_levels TEXT[]",
+      // Cron tourne par quarts d'heure → snap preferred_minute aux slots 0/15/30/45.
+      // Sans ça les users qui ont tape "9h05" en onboarding ne recoivent jamais leur daily.
+      `UPDATE users
+        SET preferred_hour   = (preferred_hour + CASE WHEN preferred_minute >= 53 THEN 1 ELSE 0 END) % 24,
+            preferred_minute = CASE
+              WHEN preferred_minute < 8  THEN 0
+              WHEN preferred_minute < 23 THEN 15
+              WHEN preferred_minute < 38 THEN 30
+              WHEN preferred_minute < 53 THEN 45
+              ELSE 0
+            END
+        WHERE preferred_minute IS NOT NULL AND preferred_minute % 15 <> 0`,
       // Normalisation level : drop 'advanced' (n'existe plus en v4)
       "UPDATE users SET level = 'intermediate' WHERE level = 'advanced'",
       "UPDATE modules SET level = 'intermediate' WHERE level = 'advanced'",

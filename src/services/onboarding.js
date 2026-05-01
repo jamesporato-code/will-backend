@@ -394,15 +394,24 @@ async function askHour(user) {
 }
 
 // Parser tolérant : "8", "08", "8h", "8h30", "8h 30", "20:00", "20H30", etc.
+// Le cron tourne par quart d'heure (0/15/30/45) → on snap la minute au plus proche.
+// Sans ce snap, un user qui tape "9h05" n'est jamais matché par le scheduler.
 function parseHourInput(text) {
   if (!text) return null;
   const t = String(text).trim().toLowerCase().replace(/\s+/g, '');
   const m = t.match(/^(\d{1,2})(?:[h:](\d{1,2}))?h?$/);
   if (!m) return null;
-  const hour = parseInt(m[1], 10);
-  const minute = m[2] !== undefined ? parseInt(m[2], 10) : 0;
-  if (isNaN(hour) || hour < 0 || hour > 23) return null;
-  if (isNaN(minute) || minute < 0 || minute > 59) return null;
+  const rawHour = parseInt(m[1], 10);
+  const rawMinute = m[2] !== undefined ? parseInt(m[2], 10) : 0;
+  if (isNaN(rawHour) || rawHour < 0 || rawHour > 23) return null;
+  if (isNaN(rawMinute) || rawMinute < 0 || rawMinute > 59) return null;
+  // Snap au quart d'heure le plus proche, avec wrap si on bascule à l'heure suivante
+  let minute = Math.round(rawMinute / 15) * 15;
+  let hour = rawHour;
+  if (minute >= 60) {
+    minute = 0;
+    hour = (hour + 1) % 24;
+  }
   return { hour, minute };
 }
 
