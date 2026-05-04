@@ -5,7 +5,8 @@ const logger = require('./utils/logger');
 const webhookRoutes = require('./routes/webhook');
 const stripeRoutes = require('./routes/stripe');
 const adminRoutes = require('./routes/admin');
-const { initDB } = require('./db/pool');
+const { initDB, query } = require('./db/pool');
+const { getRedis } = require('./services/redis');
 const { startDailyCron } = require('./cron/scheduler');
 
 const app = express();
@@ -19,8 +20,34 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok', service: 'Will - Coach IA WhatsApp', version: '1.1.0' });
 });
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+// Health endpoint complet : check DB + Redis. Renvoie 503 si quelque chose
+// est down (UptimeRobot s'en sert pour alerter).
+app.get('/health', async (req, res) => {
+  const checks = { db: false, redis: false };
+  try {
+    await query('SELECT 1');
+    checks.db = true;
+  } catch (err) {
+    logger.error('Health check DB failed', { error: err.message });
+  }
+  try {
+    const r = getRedis();
+    if (typeof r.ping === 'function') {
+      const pong = await r.ping();
+      checks.redis = pong === 'PONG';
+    } else {
+      // Stub fallback (REDIS_URL non defini) : on considere OK pour ne pas alerter
+      checks.redis = true;
+    }
+  } catch (err) {
+    logger.error('Health check Redis failed', { error: err.message });
+  }
+  const healthy = checks.db && checks.redis;
+  res.status(healthy ? 200 : 503).json({
+    status: healthy ? 'healthy' : 'degraded',
+    checks,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 app.use('/api/webhook', webhookRoutes);
