@@ -410,7 +410,12 @@ router.post('/reset-all-users', adminAuth, async (req, res) => {
         trial_reminder_j6 = false,
         trial_reminder_j7 = false,
         trial_reminder_j14 = false,
-        last_message_date = NULL
+        last_message_date = NULL,
+        last_user_message_at = NULL,
+        pending_daily = false,
+        pending_action = NULL,
+        payment_failed_at = NULL,
+        payment_grace_until = NULL
     `);
 
     logger.warn('ALL USERS RESET by admin', { totalUsers, affected: result.rowCount });
