@@ -93,6 +93,63 @@ router.get('/stats', adminAuth, async (req, res) => {
       WHERE plan = 'pro'
     `);
 
+    // ============================================
+    // FUNNEL — etapes-cles d'acquisition + activation
+    // ============================================
+    const funnelToday = await query(`
+      SELECT
+        COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE)                                        AS signups,
+        COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE AND onboarding_complete = true)         AS onboarded,
+        COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE AND last_user_message_at >= CURRENT_DATE) AS active,
+        COUNT(*) FILTER (WHERE plan = 'pro' AND updated_at >= CURRENT_DATE)                       AS pro_conversions
+      FROM users
+    `);
+    const funnelWeek = await query(`
+      SELECT
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')                                  AS signups,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days' AND onboarding_complete = true)   AS onboarded,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days' AND last_user_message_at >= NOW() - INTERVAL '24 hours') AS active,
+        COUNT(*) FILTER (WHERE plan = 'pro' AND updated_at >= NOW() - INTERVAL '7 days')                 AS pro_conversions
+      FROM users
+    `);
+    const funnelMonth = await query(`
+      SELECT
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days')                                  AS signups,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days' AND onboarding_complete = true)   AS onboarded,
+        COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days' AND last_user_message_at >= NOW() - INTERVAL '7 days') AS active,
+        COUNT(*) FILTER (WHERE plan = 'pro' AND updated_at >= NOW() - INTERVAL '30 days')                 AS pro_conversions
+      FROM users
+    `);
+
+    // Etat operationnel template / fenetre 24h
+    const opsHealth = await query(`
+      SELECT
+        COUNT(*) FILTER (WHERE pending_action = 'daily')                                              AS pending_daily,
+        COUNT(*) FILTER (WHERE pending_action LIKE 'trial_%')                                         AS pending_trial_reminder,
+        COUNT(*) FILTER (WHERE plan IN ('trial','pro') AND onboarding_complete = true
+                              AND (last_user_message_at IS NULL OR last_user_message_at < NOW() - INTERVAL '24 hours')) AS outside_24h_window,
+        COUNT(*) FILTER (WHERE plan = 'trial' AND onboarding_complete = true
+                              AND created_at <= NOW() - INTERVAL '7 days')                           AS trial_expired_unconverted
+      FROM users
+    `);
+
+    const buildFunnel = (row) => {
+      const s = parseInt(row.signups || 0);
+      const o = parseInt(row.onboarded || 0);
+      const a = parseInt(row.active || 0);
+      const p = parseInt(row.pro_conversions || 0);
+      const pct = (num, den) => (den > 0 ? ((num / den) * 100).toFixed(1) : null);
+      return {
+        signups: s,
+        onboarded: o,
+        active: a,
+        pro_conversions: p,
+        rate_signup_to_onboarded: pct(o, s),
+        rate_onboarded_to_active: pct(a, o),
+        rate_signup_to_pro: pct(p, s),
+      };
+    };
+
     res.json({
       overview: {
         totalUsers: parseInt(totalUsers.rows[0].total),
@@ -106,6 +163,17 @@ router.get('/stats', adminAuth, async (req, res) => {
         conversionRate: totalUsers.rows[0].total > 0
           ? ((paidUsers.rows[0].total / totalUsers.rows[0].total) * 100).toFixed(1)
           : 0,
+      },
+      funnel: {
+        today: buildFunnel(funnelToday.rows[0] || {}),
+        week:  buildFunnel(funnelWeek.rows[0] || {}),
+        month: buildFunnel(funnelMonth.rows[0] || {}),
+      },
+      ops: {
+        pending_daily:           parseInt(opsHealth.rows[0].pending_daily || 0),
+        pending_trial_reminder:  parseInt(opsHealth.rows[0].pending_trial_reminder || 0),
+        outside_24h_window:      parseInt(opsHealth.rows[0].outside_24h_window || 0),
+        trial_expired_unconverted: parseInt(opsHealth.rows[0].trial_expired_unconverted || 0),
       },
       planStats: planStats.rows,
       levelStats: levelStats.rows,
