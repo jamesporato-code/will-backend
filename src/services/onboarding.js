@@ -358,7 +358,10 @@ async function handleOnboarding(user, parsed) {
   }
 
   // STEP 9 : choix plan
-  if (step === 9 && parsed.buttonId?.startsWith('ob_plan_')) {
+  // Accepte aussi quand step=10 (onboarding deja termine) si daily_message_count=0,
+  // pour gerer le cas 'l'user a clique Pro puis change d'avis pour Trial'.
+  const isPlanRetry = step === 10 && user.daily_message_count === 0;
+  if ((step === 9 || isPlanRetry) && parsed.buttonId?.startsWith('ob_plan_')) {
     if (parsed.buttonId === 'ob_plan_trial') {
       await updateProfile(user.id, { onboarding_step: 10, onboarding_complete: true });
       await whatsapp.sendText(
@@ -390,7 +393,19 @@ async function handleOnboarding(user, parsed) {
       await whatsapp.sendText(
         user.whatsapp_id,
         'Voici ton lien de paiement (Pro, 6,99 €/mois) :\n\n' + checkoutUrl + '\n\n' +
-        'Paiement sécurisé par Stripe. Sans engagement.'
+        'Paiement sécurisé par Stripe. Sans engagement.\n\n' +
+        '_Si tu changes d\'avis, tu peux taper "Essai gratuit 7j" ci-dessus pour démarrer en trial pendant que tu reflechis._'
+      );
+      // Re-affiche les boutons pour permettre un repli vers le trial
+      await delay(1500);
+      await whatsapp.sendButtons(
+        user.whatsapp_id,
+        'Tu peux aussi commencer par l\'essai gratuit en attendant.',
+        [
+          { id: 'ob_plan_trial', title: 'Essai gratuit 7j' },
+        ],
+        null,
+        'Modifiable a tout moment'
       );
       return true;
     }
