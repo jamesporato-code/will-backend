@@ -437,6 +437,43 @@ router.post('/reset-user/:id', adminAuth, async (req, res) => {
 // Destructif : remet tout le monde à zéro (onboarding, parcours, plan trial).
 // Usage : refonte v4, restart prop. Nécessite ?confirm=yes pour éviter accidents.
 // ============================================
+// POST /api/admin/wipe-all - DELETE TOTAL : users + messages remis a zero.
+// A utiliser uniquement avant les premiers vrais users.
+// ============================================
+router.post('/wipe-all', adminAuth, async (req, res) => {
+  try {
+    if (req.query.confirm !== 'yes') {
+      return res.status(400).json({
+        error: 'Confirmation requise. Ajoute ?confirm=yes a l\'URL.',
+      });
+    }
+
+    const before = await query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM users) AS users,
+        (SELECT COUNT(*)::int FROM messages) AS messages
+    `);
+
+    // Ordre : messages d'abord (FK vers users), puis users.
+    await query('DELETE FROM messages');
+    await query('DELETE FROM users');
+    // Reset des sequences pour repartir a id=1
+    await query("SELECT setval('users_id_seq', 1, false)").catch(() => null);
+    await query("SELECT setval('messages_id_seq', 1, false)").catch(() => null);
+
+    logger.warn('FULL WIPE by admin', { before: before.rows[0] });
+    res.json({
+      success: true,
+      message: 'Tous les users et messages ont ete supprimes.',
+      before: before.rows[0],
+    });
+  } catch (err) {
+    logger.error('Admin wipe-all error', { error: err.message });
+    res.status(500).json({ error: 'Erreur serveur', detail: err.message });
+  }
+});
+
+// ============================================
 router.post('/reset-all-users', adminAuth, async (req, res) => {
   try {
     if (req.query.confirm !== 'yes') {
