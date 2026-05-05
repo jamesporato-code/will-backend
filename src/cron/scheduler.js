@@ -58,11 +58,22 @@ function startDailyCron() {
     await sendTrialReminders();
   }, { timezone: 'Europe/Paris' });
 
-  // Cron actu IA : tous les jours a 12h30 Paris (creneau dejeuner, hors slots du daily)
-  // Permet a chaque user d'avoir un 2e contact avec Will dans la journee.
-  cron.schedule('30 12 * * *', async () => {
-    logger.info('Cron actu IA midi : verification');
-    await sendActuToAllEligible();
+  // Cron actu IA : tous les quarts d'heure, push aux users dont actu_hour/actu_minute matchent.
+  // Filtre par actu_mode='scheduled' (les 'bundled' sont declenches par le daily du matin).
+  cron.schedule('*/15 * * * *', async () => {
+    const now = new Date();
+    const parisHour = parseInt(
+      now.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', hour12: false }),
+      10
+    );
+    const parisMinute = parseInt(
+      now.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', minute: '2-digit' }),
+      10
+    );
+    const slotMinute = [0, 15, 30, 45].reduce((prev, curr) =>
+      Math.abs(curr - parisMinute) < Math.abs(prev - parisMinute) ? curr : prev
+    );
+    await sendActuAtSlot(parisHour, slotMinute);
   }, { timezone: 'Europe/Paris' });
 
   // Cron reset compteur quotidien : minuit Paris
@@ -148,13 +159,27 @@ async function sendDailyForUser(userId, opts = {}) {
 
     await updateStreak(user);
 
+    let result;
     if (user.plan === 'trial') {
-      return await sendTrialDaily(user, opts);
+      result = await sendTrialDaily(user, opts);
+    } else if (user.plan === 'pro') {
+      result = await sendProDaily(user, opts);
+    } else {
+      return { ok: false, error: 'plan ' + user.plan + ' inactive (no daily)' };
     }
-    if (user.plan === 'pro') {
-      return await sendProDaily(user, opts);
+
+    // Bundled actu : si le user a choisi 'avec mon daily', on enchaine
+    // l'actu IA juste apres. Skip si daily a echoue ou si bundle desactive.
+    if (result?.ok && !opts.skipActuBundle && user.actu_mode === 'bundled') {
+      try {
+        await new Promise(r => setTimeout(r, 1500));
+        await sendActuForUser(userId, { skipWindowCheck: true, skipActuBundle: true });
+      } catch (err) {
+        logger.error('Erreur bundled actu apres daily', { userId, error: err.message });
+      }
     }
-    return { ok: false, error: 'plan ' + user.plan + ' inactive (no daily)' };
+
+    return result;
   } catch (err) {
     logger.error('sendDailyForUser exception', { userId, error: err.message, stack: err.stack });
     return { ok: false, error: err.message };
@@ -162,20 +187,28 @@ async function sendDailyForUser(userId, opts = {}) {
 }
 
 // ============================================
-// ACTU IA — push midi (12h30) en plus du daily du matin
+// ACTU IA — 2e push journee, configurable par user
+//   - actu_mode = 'scheduled' (defaut) : push a actu_hour/actu_minute
+//   - actu_mode = 'bundled' : push juste apres le daily (gere dans sendDailyForUser)
+//   - actu_mode = 'disabled' : pas de push (toujours dispo via /menu)
 // ============================================
-async function sendActuToAllEligible() {
+async function sendActuAtSlot(currentHour, currentMinute = 0) {
   try {
     const usersResult = await query(
       `SELECT id FROM users
        WHERE onboarding_complete = true
        AND plan IN ('trial', 'pro')
        AND (plan != 'trial' OR created_at > NOW() - INTERVAL '7 days')
-       AND daily_opt_in != false`,
-      []
+       AND daily_opt_in != false
+       AND COALESCE(actu_mode, 'scheduled') = 'scheduled'
+       AND COALESCE(actu_hour, 12) = $1
+       AND COALESCE(actu_minute, 30) = $2`,
+      [currentHour, currentMinute]
     );
     const ids = usersResult.rows.map(r => r.id);
-    logger.info(ids.length + ' utilisateurs eligibles pour l\'actu IA midi');
+    if (ids.length === 0) return;
+    const slotLabel = currentHour + 'h' + (currentMinute < 10 ? '0' + currentMinute : currentMinute);
+    logger.info(ids.length + ' utilisateurs pour actu IA a ' + slotLabel);
     for (const userId of ids) {
       const r = await sendActuForUser(userId);
       if (!r.ok) {
@@ -184,7 +217,7 @@ async function sendActuToAllEligible() {
       await new Promise(r => setTimeout(r, 500));
     }
   } catch (err) {
-    logger.error('Erreur cron actu midi', { error: err.message });
+    logger.error('Erreur cron actu', { error: err.message });
   }
 }
 
@@ -694,7 +727,7 @@ module.exports = {
   sendDailyMessages,
   sendDailyForUser,
   sendActuForUser,
-  sendActuToAllEligible,
+  sendActuAtSlot,
   sendTrialReminderFreeForm,
   handleProMenuChoice,
 };

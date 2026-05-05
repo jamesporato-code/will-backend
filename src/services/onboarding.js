@@ -274,7 +274,7 @@ async function handleOnboarding(user, parsed) {
     return true;
   }
 
-  // STEP 8 : choix de l'heure en une seule étape (free-text)
+  // STEP 8 : choix de l'heure du daily (free-text)
   if (step === 8) {
     const hm = parseHourInput(parsed.text);
     if (!hm) {
@@ -287,9 +287,73 @@ async function handleOnboarding(user, parsed) {
     await updateProfile(user.id, {
       preferred_hour: hm.hour,
       preferred_minute: hm.minute,
+      onboarding_step: 81,
+    });
+    await askActuTime(user);
+    return true;
+  }
+
+  // STEP 81 : choix de l'heure pour l'actu IA (3 boutons)
+  if (step === 81 && parsed.buttonId?.startsWith('ob_actu_')) {
+    if (parsed.buttonId === 'ob_actu_bundle') {
+      await updateProfile(user.id, { actu_mode: 'bundled', onboarding_step: 9 });
+      await whatsapp.sendText(
+        user.whatsapp_id,
+        'Parfait. Ton actu IA arrivera juste apres ton daily — un seul moment, deux fois plus dense.'
+      );
+      await delay(1000);
+      const u = await query('SELECT preferred_hour, preferred_minute FROM users WHERE id = $1', [user.id]);
+      const row = u.rows[0] || {};
+      await sendRecapAndPlan(user, row.preferred_hour, row.preferred_minute);
+      return true;
+    }
+    if (parsed.buttonId === 'ob_actu_noon') {
+      await updateProfile(user.id, {
+        actu_mode: 'scheduled',
+        actu_hour: 12,
+        actu_minute: 30,
+        onboarding_step: 9,
+      });
+      await whatsapp.sendText(user.whatsapp_id, 'Parfait. Ton actu IA midi arrivera a 12h30.');
+      await delay(1000);
+      const u = await query('SELECT preferred_hour, preferred_minute FROM users WHERE id = $1', [user.id]);
+      const row = u.rows[0] || {};
+      await sendRecapAndPlan(user, row.preferred_hour, row.preferred_minute);
+      return true;
+    }
+    if (parsed.buttonId === 'ob_actu_custom') {
+      await updateProfile(user.id, { onboarding_step: 82 });
+      await whatsapp.sendText(
+        user.whatsapp_id,
+        'A quelle heure veux-tu ton actu IA ?\n\nReponds avec ton heure — par exemple : *13h*, *17h30*, *21h*.'
+      );
+      return true;
+    }
+    return false;
+  }
+
+  // STEP 82 : free-text pour l'heure custom de l'actu
+  if (step === 82) {
+    const hm = parseHourInput(parsed.text);
+    if (!hm) {
+      await whatsapp.sendText(
+        user.whatsapp_id,
+        'Format non reconnu. Indique ton heure : *8h*, *19h30*, *21h*.'
+      );
+      return true;
+    }
+    await updateProfile(user.id, {
+      actu_mode: 'scheduled',
+      actu_hour: hm.hour,
+      actu_minute: hm.minute,
       onboarding_step: 9,
     });
-    await sendRecapAndPlan(user, hm.hour, hm.minute);
+    const mPad = hm.minute < 10 ? '0' + hm.minute : '' + hm.minute;
+    await whatsapp.sendText(user.whatsapp_id, `Parfait. Ton actu IA arrivera a ${hm.hour}h${mPad}.`);
+    await delay(1000);
+    const u = await query('SELECT preferred_hour, preferred_minute FROM users WHERE id = $1', [user.id]);
+    const row = u.rows[0] || {};
+    await sendRecapAndPlan(user, row.preferred_hour, row.preferred_minute);
     return true;
   }
 
@@ -335,7 +399,7 @@ async function handleOnboarding(user, parsed) {
 
   if (parsed.text && !parsed.buttonId && !parsed.listId) {
     logger.warn('Text input during onboarding', { userId: user.id, step });
-    if (step !== 61 && step !== 8) {
+    if (step !== 61 && step !== 8 && step !== 82) {
       await whatsapp.sendText(user.whatsapp_id, 'Utilise les boutons ou la liste ci-dessus pour avancer.');
       return true;
     }
@@ -390,6 +454,20 @@ async function askHour(user) {
     user.whatsapp_id,
     'À quelle heure souhaites-tu recevoir ton message quotidien ?\n\n' +
     'Réponds simplement avec ton heure — par exemple : *8h*, *19h30*, *21h*, *22:00*.'
+  );
+}
+
+async function askActuTime(user) {
+  await whatsapp.sendButtons(
+    user.whatsapp_id,
+    'En plus de ton daily, je peux t\'envoyer l\'*actu IA du jour* : ce qui sort, ce qui change, ce qui compte vraiment.\n\nQuand veux-tu la recevoir ?',
+    [
+      { id: 'ob_actu_bundle', title: 'Avec mon daily' },
+      { id: 'ob_actu_noon', title: 'A 12h30' },
+      { id: 'ob_actu_custom', title: 'Une autre heure' },
+    ],
+    null,
+    'Tu pourras changer plus tard'
   );
 }
 

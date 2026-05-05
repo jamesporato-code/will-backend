@@ -66,7 +66,8 @@ async function updateProfile(userId, updates) {
     'ia_interest', 'ia_interest_other', 'daily_opt_in',
     'current_module', 'module_progress', 'streak', 'secondary_jobs',
     'ia_frequency', 'ia_goal', 'ia_time_budget', 'menu_quiz_step',
-    'free_text_context', 'pending_daily', 'pending_action'];
+    'free_text_context', 'pending_daily', 'pending_action',
+    'actu_mode', 'actu_hour', 'actu_minute'];
 
   const fields = Object.keys(updates).filter(k => allowed.includes(k));
   if (fields.length === 0) return;
