@@ -579,6 +579,32 @@ router.post('/trigger-daily/:id', adminAuth, async (req, res) => {
   }
 });
 
+// POST /api/admin/trigger-actu/:id - force l'envoi de l'actu IA pour un user
+router.post('/trigger-actu/:id', adminAuth, async (req, res) => {
+  try {
+    const { sendActuForUser } = require('../cron/scheduler');
+    const userId = req.params.id;
+    const userCheck = await query('SELECT id FROM users WHERE id = $1', [userId]);
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+    const result = await sendActuForUser(userId);
+    logger.info('Actu triggered manually by admin', { userId, result });
+    if (!result.ok) {
+      return res.status(500).json({ success: false, error: result.error, userId });
+    }
+    res.json({
+      success: true,
+      message: 'Actu IA envoyée',
+      type: result.type,
+      userId,
+    });
+  } catch (err) {
+    logger.error('Admin trigger-daily error', { error: err.message, stack: err.stack });
+    res.status(500).json({ error: 'Erreur serveur: ' + err.message });
+  }
+});
+
 // ============================================
 // POST /api/admin/migrate - Add streak + module columns
 // ============================================
