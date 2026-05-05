@@ -1813,6 +1813,65 @@ router.delete('/subscriptions/:subId', adminAuth, async (req, res) => {
   }
 });
 
+// GET /api/admin/stripe-charges - liste les paiements recents (dernier 30 jours par defaut)
+router.get('/stripe-charges', adminAuth, async (req, res) => {
+  try {
+    const Stripe = require('stripe');
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const days = parseInt(req.query.days, 10) || 30;
+    const since = Math.floor(Date.now() / 1000) - days * 24 * 60 * 60;
+    const charges = await stripe.charges.list({
+      limit: 50,
+      created: { gte: since },
+    });
+    const payments = charges.data.map(c => ({
+      id: c.id,
+      amount: c.amount / 100,
+      currency: c.currency,
+      status: c.status,
+      refunded: c.refunded,
+      amount_refunded: c.amount_refunded / 100,
+      customerEmail: c.billing_details?.email,
+      customerName: c.billing_details?.name,
+      date: new Date(c.created * 1000).toISOString(),
+      description: c.description,
+      payment_intent: c.payment_intent,
+    }));
+    res.json({ payments });
+  } catch (err) {
+    logger.error('Admin stripe-charges error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/refunds - rembourse un paiement Stripe (full ou partial)
+// Body : { charge_id, amount_cents? } — si amount_cents absent, full refund.
+router.post('/refunds', adminAuth, async (req, res) => {
+  try {
+    const Stripe = require('stripe');
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const { charge_id, amount_cents } = req.body || {};
+    if (!charge_id) return res.status(400).json({ error: 'charge_id requis' });
+    const params = { charge: charge_id };
+    if (amount_cents) params.amount = amount_cents;
+    const refund = await stripe.refunds.create(params);
+    logger.info('Stripe refund issued by admin', { chargeId: charge_id, amount_cents, refundId: refund.id });
+    res.json({
+      success: true,
+      refund: {
+        id: refund.id,
+        amount: refund.amount / 100,
+        currency: refund.currency,
+        status: refund.status,
+        charge: refund.charge,
+      },
+    });
+  } catch (err) {
+    logger.error('Admin refund error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/admin/customer-portal/:userId - cree une session billing portal Stripe
 router.post('/customer-portal/:userId', adminAuth, async (req, res) => {
   try {
