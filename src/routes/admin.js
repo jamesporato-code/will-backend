@@ -275,6 +275,7 @@ router.get('/revenue', adminAuth, async (req, res) => {
       mrr += monthlyAmount;
 
       subDetails.push({
+        id: sub.id,
         customerId: sub.customer?.id,
         customerEmail: sub.customer?.email,
         customerName: sub.customer?.name,
@@ -282,6 +283,7 @@ router.get('/revenue', adminAuth, async (req, res) => {
         amount: amount / 100,
         currency: sub.currency,
         status: sub.status,
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
         currentPeriodEnd: new Date(sub.current_period_end * 1000),
         created: new Date(sub.created * 1000),
       });
