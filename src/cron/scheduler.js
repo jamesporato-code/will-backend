@@ -17,7 +17,8 @@
 //     Dim         : récap
 //
 // Crons :
-//   - Toutes les 15 min : envoi aux users dont preferred_hour+minute matchent Paris
+//   - Toutes les 15 min : envoi du daily aux users dont preferred_hour+minute matchent Paris
+//   - 12h30 Paris : push actu IA midi (2e contact dans la journee)
 //   - 10h Paris : relances trial (J5/J6/J7/J14)
 //   - Minuit Paris : reset compteur quotidien
 // ============================================
@@ -55,6 +56,13 @@ function startDailyCron() {
   cron.schedule('0 10 * * *', async () => {
     logger.info('Cron trial reminders : vérification');
     await sendTrialReminders();
+  }, { timezone: 'Europe/Paris' });
+
+  // Cron actu IA : tous les jours a 12h30 Paris (creneau dejeuner, hors slots du daily)
+  // Permet a chaque user d'avoir un 2e contact avec Will dans la journee.
+  cron.schedule('30 12 * * *', async () => {
+    logger.info('Cron actu IA midi : verification');
+    await sendActuToAllEligible();
   }, { timezone: 'Europe/Paris' });
 
   // Cron reset compteur quotidien : minuit Paris
@@ -149,6 +157,87 @@ async function sendDailyForUser(userId, opts = {}) {
     return { ok: false, error: 'plan ' + user.plan + ' inactive (no daily)' };
   } catch (err) {
     logger.error('sendDailyForUser exception', { userId, error: err.message, stack: err.stack });
+    return { ok: false, error: err.message };
+  }
+}
+
+// ============================================
+// ACTU IA — push midi (12h30) en plus du daily du matin
+// ============================================
+async function sendActuToAllEligible() {
+  try {
+    const usersResult = await query(
+      `SELECT id FROM users
+       WHERE onboarding_complete = true
+       AND plan IN ('trial', 'pro')
+       AND (plan != 'trial' OR created_at > NOW() - INTERVAL '7 days')
+       AND daily_opt_in != false`,
+      []
+    );
+    const ids = usersResult.rows.map(r => r.id);
+    logger.info(ids.length + ' utilisateurs eligibles pour l\'actu IA midi');
+    for (const userId of ids) {
+      const r = await sendActuForUser(userId);
+      if (!r.ok) {
+        logger.error('Echec actu pour user', { userId, error: r.error });
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
+  } catch (err) {
+    logger.error('Erreur cron actu midi', { error: err.message });
+  }
+}
+
+async function sendActuForUser(userId, opts = {}) {
+  try {
+    const userResult = await query('SELECT * FROM users WHERE id = $1', [userId]);
+    const user = userResult.rows[0];
+    if (!user || !user.whatsapp_id) return { ok: false, error: 'no user or whatsapp_id' };
+
+    // Si une action est deja en attente (template daily / trial reminder),
+    // on ne touche pas pour ne pas ecraser le contenu en attente de livraison.
+    if (user.pending_action && !opts.skipWindowCheck) {
+      return { ok: false, error: 'pending_action present: ' + user.pending_action };
+    }
+
+    // Hors fenetre 24h : envoie le template, marque pending_action='actu'
+    const templateName = process.env.WHATSAPP_TEMPLATE_DAILY_REMINDER;
+    if (templateName && !opts.skipWindowCheck) {
+      const within = await isWithin24hWindow(userId);
+      if (!within) {
+        const firstName = user.display_name?.split(' ')[0] || 'toi';
+        try {
+          await whatsapp.sendTemplate(user.whatsapp_id, templateName, 'fr', { first_name: firstName });
+          await query("UPDATE users SET pending_action = 'actu' WHERE id = $1", [userId]);
+          logger.info('Template actu envoye (hors fenetre 24h)', { userId });
+          return { ok: true, type: 'template_actu_reminder' };
+        } catch (err) {
+          logger.error('Echec envoi template actu', { userId, error: err.message });
+          return { ok: false, error: 'template send failed: ' + err.message };
+        }
+      }
+    }
+
+    // Fenetre ouverte : genere et envoie l'actu en free-form
+    const actu = await contentTypes.generateActuIA(user);
+    if (!actu) return { ok: false, error: 'actu generation failed' };
+
+    await whatsapp.sendText(user.whatsapp_id, '📰 Actu IA du jour\n\n' + actu);
+    await new Promise(r => setTimeout(r, 800));
+    await whatsapp.sendButtons(
+      user.whatsapp_id,
+      'Tu veux creuser ?',
+      [
+        { id: 'menu_actu', title: 'Plus d\'actu' },
+        { id: 'menu_outil', title: 'Outil du jour' },
+        { id: 'menu_hub', title: 'Voir le menu' },
+      ],
+      null,
+      'Will · midi'
+    );
+    return { ok: true, type: 'actu' };
+  } catch (err) {
+    logger.error('sendActuForUser exception', { userId, error: err.message, stack: err.stack });
     return { ok: false, error: err.message };
   }
 }
@@ -604,6 +693,8 @@ module.exports = {
   startDailyCron,
   sendDailyMessages,
   sendDailyForUser,
+  sendActuForUser,
+  sendActuToAllEligible,
   sendTrialReminderFreeForm,
   handleProMenuChoice,
 };

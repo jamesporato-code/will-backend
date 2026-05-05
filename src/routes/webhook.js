@@ -17,7 +17,7 @@ const onboarding = require('../services/onboarding');
 const menu = require('../services/menu');
 const { getCurrentSession } = require('../services/modules');
 const { getCachedResponse, cacheResponse } = require('../services/redis');
-const { handleProMenuChoice, sendDailyForUser } = require('../cron/scheduler');
+const { handleProMenuChoice, sendDailyForUser, sendActuForUser } = require('../cron/scheduler');
 const Stripe = require('stripe');
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -251,6 +251,9 @@ router.post('/', async (req, res) => {
       await userService.updateProfile(user.id, { pending_action: null, pending_daily: false });
       if (action === 'daily') {
         const result = await sendDailyForUser(user.id, { skipWindowCheck: true });
+        if (result.ok) return;
+      } else if (action === 'actu') {
+        const result = await sendActuForUser(user.id, { skipWindowCheck: true });
         if (result.ok) return;
       } else if (action && action.startsWith('trial_')) {
         const stage = action.substring('trial_'.length);

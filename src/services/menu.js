@@ -35,6 +35,7 @@ async function showMainMenu(user, intro = null) {
   ];
   const trialRows = [
     { id: 'menu_parcours', title: 'Ma session du jour', description: 'Relire ta session du jour' },
+    { id: 'menu_actu', title: 'Actu IA', description: 'L\'info IA du jour' },
   ];
 
   const profilRows = [
