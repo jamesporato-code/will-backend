@@ -64,6 +64,30 @@ function buildUserContext(user) {
   return parts.join('\n');
 }
 
+// Regle d'adaptation forte par niveau, injectee dans tous les prompts.
+// Sans cette directive le LLM ignore souvent le niveau et produit le meme texte
+// pour beginner et intermediate.
+function buildLevelGuidance(user) {
+  const lvl = user?.level;
+  if (lvl === 'beginner') {
+    return `ADAPTATION NIVEAU BEGINNER (obligatoire) :
+- Zero jargon technique non explique. Pas de "API", "token", "prompt engineering", "fine-tuning", "agent", "MCP" sans definition immediate sur place.
+- Utilise des metaphores du quotidien et des analogies concretes.
+- Une seule idee par phrase, phrases courtes.
+- Action minimale viable : la version la plus simple possible du defi propose.
+- Ne presume jamais de connaissances IA prealables.`;
+  }
+  if (lvl === 'intermediate') {
+    return `ADAPTATION NIVEAU INTERMEDIATE (obligatoire) :
+- Vocabulaire technique OK et meme attendu (prompt structuré, contexte, role-play, chain-of-thought, RAG, agents, MCP, fine-tuning, embeddings).
+- Pas besoin de redefinir les termes IA courants. Va a la nuance, aux subtilites, aux pieges classiques.
+- Propose au moins une technique avancee ou un piege a eviter.
+- Exemples plus complexes, defis plus exigeants.
+- Le user utilise deja l'IA — ne le prends pas pour un debutant.`;
+  }
+  return '';
+}
+
 // ============================================
 // TYPE A â Parcours structurÃ©
 // ============================================
@@ -91,6 +115,8 @@ PROGRESSION : ${progressPercent}% du module en cours
 
 PROFIL :
 ${buildUserContext(user)}
+
+${buildLevelGuidance(user)}
 
 ${domainContext}
 
@@ -136,6 +162,8 @@ async function generateActuIA(user) {
 
 PROFIL :
 ${buildUserContext(user)}
+
+${buildLevelGuidance(user)}
 
 ${actuData ? 'ACTUALITES FRAICHES (source web) :\n' + actuData + '\n' : ''}
 
@@ -189,6 +217,8 @@ async function generateOutilDuJour(user) {
 PROFIL :
 ${buildUserContext(user)}
 
+${buildLevelGuidance(user)}
+
 ${toolData ? 'OUTILS RECENTS (source web) :\n' + toolData + '\n' : ''}
 
 STRUCTURE OBLIGATOIRE (4 parties en 1 message) :
@@ -235,6 +265,8 @@ async function generatePromptDuJour(user) {
 
 PROFIL :
 ${buildUserContext(user)}
+
+${buildLevelGuidance(user)}
 
 STRUCTURE OBLIGATOIRE :
 1. Intro courte : a quoi sert ce prompt (1 phrase)

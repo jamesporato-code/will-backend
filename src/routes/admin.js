@@ -821,6 +821,94 @@ const DEFAULT_MODULES = [
     "Projet final : ton workflow IA complet",
     "Récap parcours + bilan personnel",
   ]},
+  // ============================================
+  // Modules transverses (positions 11+) — ajoutes apres le parcours initial.
+  // Universels par defaut (applicable_sectors: null), filtres si pertinent.
+  // ============================================
+  { slug: 'donnees-rgpd', position: 11, name: "IA et donnees : RGPD, anonymisation",
+    level: 'beginner', dynamic: false,
+    applicable_sectors: null, applicable_levels: ['beginner', 'intermediate'], sessions: [
+    "Ce que tu peux et ne peux pas envoyer a l'IA",
+    "Anonymiser tes donnees avant de les envoyer",
+    "RGPD et IA : les bases pour ne pas te tromper",
+    "Choisir un outil IA conforme a tes contraintes pro",
+    "Cas pratique : preparer un document pour analyse IA en mode safe",
+    "Recap module + check-list de conformite",
+  ]},
+  { slug: 'redaction', position: 12, name: "Ecrire mieux avec l'IA",
+    level: 'beginner', dynamic: false,
+    applicable_sectors: null, applicable_levels: ['beginner', 'intermediate'], sessions: [
+    "Structure d'un bon texte : intro, corps, chute",
+    "Adapter le ton a ton audience",
+    "Reecrire un texte existant pour le rendre meilleur",
+    "Ecrire pour LinkedIn, mail, slide deck — un format = un style",
+    "Detecter et corriger le style 'ChatGPT' (trop generique)",
+    "Recap module + ton style a toi",
+  ]},
+  { slug: 'recherche', position: 13, name: "Recherche augmentee",
+    level: 'beginner', dynamic: false,
+    applicable_sectors: null, applicable_levels: ['beginner', 'intermediate'], sessions: [
+    "Perplexity, ChatGPT search, Gemini : qui sert quoi",
+    "Formuler une bonne requete de recherche",
+    "Verifier les sources : eviter les hallucinations",
+    "Comparer plusieurs sources rapidement",
+    "Veille automatisee : recevoir l'info quand elle sort",
+    "Recap module + ta routine de recherche",
+  ]},
+  { slug: 'creativite', position: 14, name: "IA et creativite",
+    level: 'intermediate', dynamic: false,
+    applicable_sectors: ['marketing', 'creative', 'dev', 'founder'],
+    applicable_levels: ['beginner', 'intermediate'], sessions: [
+    "Brainstorming structure : divergence puis convergence",
+    "Generer 50 idees en 5 minutes (et choisir les bonnes)",
+    "Sortir des idees convenues : prompts pour la creativite",
+    "Visualiser une idee : DALL-E, Midjourney pour cadrer",
+    "Iterer sur une idee jusqu'a la perfection",
+    "Recap module + ta methode creative",
+  ]},
+  { slug: 'decisionnel', position: 15, name: "IA pour decider",
+    level: 'intermediate', dynamic: false,
+    applicable_sectors: ['founder', 'corporate', 'finance', 'freelance'],
+    applicable_levels: ['intermediate'], sessions: [
+    "SWOT augmente : forces / faiblesses / opportunites / menaces avec l'IA",
+    "Modeliser un dilemme et obtenir des recommandations",
+    "Detecter tes biais cognitifs avec un prompt critique",
+    "Comparer 3 options avec une matrice de decision IA",
+    "Cas pratique : prendre une decision pro complexe",
+    "Recap module + ton cadre de decision personnel",
+  ]},
+  { slug: 'negociation', position: 16, name: "Preparer tes negos avec l'IA",
+    level: 'intermediate', dynamic: false,
+    applicable_sectors: ['sales', 'founder', 'freelance', 'hr'],
+    applicable_levels: ['intermediate'], sessions: [
+    "Analyser la position de l'autre partie avec l'IA",
+    "Lister tes meilleures et pires options (BATNA)",
+    "Preparer 5 contre-arguments avec l'IA",
+    "Simuler la nego : l'IA joue l'autre cote",
+    "Adapter ton script en temps reel pendant la nego",
+    "Recap module + ta playbook nego",
+  ]},
+  { slug: 'apprentissage', position: 17, name: "Apprendre avec l'IA",
+    level: 'beginner', dynamic: false,
+    applicable_sectors: null, applicable_levels: ['beginner', 'intermediate'], sessions: [
+    "Te faire expliquer un concept selon ton niveau exact",
+    "Creer des exercices cibles sur ce que tu rates",
+    "Memoriser durablement : la repetition espacee assistee par IA",
+    "Apprendre une competence en 30 jours avec l'IA",
+    "Cas pratique : maitriser un sujet complexe en 7 jours",
+    "Recap module + ton plan d'apprentissage perso",
+  ]},
+  { slug: 'analyse-data', position: 18, name: "Analyser des donnees avec l'IA",
+    level: 'intermediate', dynamic: false,
+    applicable_sectors: ['finance', 'dev', 'marketing', 'corporate'],
+    applicable_levels: ['intermediate'], sessions: [
+    "Excel/CSV : faire parler tes donnees sans formules",
+    "Identifier patterns et anomalies dans tes chiffres",
+    "Construire un dashboard visuel a partir d'un fichier",
+    "Croiser plusieurs fichiers pour repondre a une question business",
+    "Cas pratique : analyser le P&L d'une boite",
+    "Recap module + ta routine analyse",
+  ]},
 ];
 
 async function seedModulesIfEmpty() {
@@ -880,6 +968,47 @@ async function applyDefaultModuleTags() {
     return { error: err.message };
   }
 }
+
+// ============================================
+// POST /api/admin/modules/sync-defaults — pousse les modules DEFAULT_MODULES
+// manquants en DB sans toucher aux modules existants. Utile quand on a ajoute
+// de nouveaux modules au code source apres un seed initial.
+// ============================================
+router.post('/modules/sync-defaults', adminAuth, async (req, res) => {
+  try {
+    const existing = await query('SELECT slug FROM modules');
+    const existingSlugs = new Set(existing.rows.map(r => r.slug));
+    let modulesAdded = 0;
+    let sessionsAdded = 0;
+    const added = [];
+    for (const m of DEFAULT_MODULES) {
+      if (existingSlugs.has(m.slug)) continue;
+      const modRes = await query(
+        `INSERT INTO modules (slug, position, name, level, dynamic, active, applicable_sectors, applicable_levels)
+         VALUES ($1, $2, $3, $4, $5, true, $6, $7)
+         RETURNING id`,
+        [m.slug, m.position, m.name, m.level, m.dynamic, m.applicable_sectors, m.applicable_levels]
+      );
+      const modId = modRes.rows[0].id;
+      modulesAdded++;
+      for (let i = 0; i < m.sessions.length; i++) {
+        await query(
+          `INSERT INTO module_sessions (module_id, position, topic, active)
+           VALUES ($1, $2, $3, true)`,
+          [modId, i, m.sessions[i]]
+        );
+        sessionsAdded++;
+      }
+      added.push({ slug: m.slug, position: m.position, sessions: m.sessions.length });
+    }
+    require('../services/modules').clearCache();
+    logger.info('Sync DEFAULT_MODULES', { modulesAdded, sessionsAdded });
+    res.json({ success: true, modulesAdded, sessionsAdded, added });
+  } catch (err) {
+    logger.error('Admin sync-defaults error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ============================================
 // GET /api/admin/modules — liste tous les modules avec sessions
