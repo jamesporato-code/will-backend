@@ -1563,6 +1563,69 @@ router.get('/stripe-config', adminAuth, async (req, res) => {
   }
 });
 
+// POST /api/admin/stripe-prices - cree un nouveau price sur le meme produit
+// que le price actuel (STRIPE_PRICE_PRO). Body : { amount_cents, currency?, interval? }
+// Repond avec le nouveau price ID a mettre dans STRIPE_PRICE_PRO sur Railway.
+router.post('/stripe-prices', adminAuth, async (req, res) => {
+  try {
+    const Stripe = require('stripe');
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const { amount_cents, currency, interval } = req.body || {};
+    if (!amount_cents || amount_cents < 0) {
+      return res.status(400).json({ error: 'amount_cents requis (entier en centimes)' });
+    }
+    if (!process.env.STRIPE_PRICE_PRO) {
+      return res.status(400).json({ error: 'STRIPE_PRICE_PRO non configure : impossible de retrouver le produit' });
+    }
+    const currentPrice = await stripe.prices.retrieve(process.env.STRIPE_PRICE_PRO);
+    const productId = typeof currentPrice.product === 'string'
+      ? currentPrice.product
+      : currentPrice.product.id;
+
+    const newPrice = await stripe.prices.create({
+      product: productId,
+      unit_amount: amount_cents,
+      currency: (currency || currentPrice.currency || 'eur').toLowerCase(),
+      recurring: { interval: interval || currentPrice.recurring?.interval || 'month' },
+      nickname: currentPrice.nickname || null,
+    });
+
+    logger.info('Stripe price created by admin', {
+      newPriceId: newPrice.id,
+      productId,
+      amount_cents,
+    });
+    res.json({
+      success: true,
+      old_price_id: currentPrice.id,
+      new_price: {
+        id: newPrice.id,
+        amount: newPrice.unit_amount / 100,
+        currency: newPrice.currency,
+        interval: newPrice.recurring?.interval,
+        product: productId,
+        livemode: newPrice.livemode,
+      },
+      next_step: `Sur Railway, remplace STRIPE_PRICE_PRO par ${newPrice.id} puis redeploie.`,
+    });
+  } catch (err) {
+    logger.error('Admin create stripe price error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/stripe-prices/:priceId/archive - archive un price (le rend inactif)
+router.post('/stripe-prices/:priceId/archive', adminAuth, async (req, res) => {
+  try {
+    const Stripe = require('stripe');
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const updated = await stripe.prices.update(req.params.priceId, { active: false });
+    res.json({ success: true, price_id: updated.id, active: updated.active });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DELETE /api/admin/subscriptions/:subId?at_period_end=1 - annule un abo Stripe
 router.delete('/subscriptions/:subId', adminAuth, async (req, res) => {
   try {
