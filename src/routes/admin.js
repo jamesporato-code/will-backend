@@ -298,11 +298,14 @@ router.get('/revenue', adminAuth, async (req, res) => {
     const recentPayments = charges.data
       .filter(c => c.status === 'succeeded')
       .map(c => ({
+        id: c.id,
         amount: c.amount / 100,
         currency: c.currency,
         customerEmail: c.billing_details?.email,
         date: new Date(c.created * 1000),
         description: c.description,
+        refunded: c.refunded,
+        amount_refunded: c.amount_refunded / 100,
       }));
 
     const totalRevenue30d = recentPayments.reduce((sum, p) => sum + p.amount, 0);
