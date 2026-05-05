@@ -494,7 +494,10 @@ function parseHourInput(text) {
 }
 
 async function sendRecapAndPlan(user, hour, minute) {
-  const result = await query('SELECT job, secondary_jobs, ia_interest, ia_interest_other FROM users WHERE id = $1', [user.id]);
+  const result = await query(
+    'SELECT job, secondary_jobs, ia_interest, ia_interest_other, actu_mode, actu_hour, actu_minute FROM users WHERE id = $1',
+    [user.id]
+  );
   const row = result.rows[0] || {};
   const primaryJob = row.job || 'Non précisé';
   const secondaryArr = Array.isArray(row.secondary_jobs) ? row.secondary_jobs : [];
@@ -516,9 +519,18 @@ async function sendRecapAndPlan(user, hour, minute) {
   if (hour !== null && hour !== undefined) {
     const m = (minute === null || minute === undefined) ? 0 : minute;
     const mPad = m < 10 ? '0' + m : '' + m;
-    recapLines.push('Message quotidien : ' + hour + 'h' + mPad);
+    recapLines.push('Daily : ' + hour + 'h' + mPad);
   } else {
     recapLines.push('Messages quotidiens : désactivés');
+  }
+  // Recap actu IA
+  if (row.actu_mode === 'bundled') {
+    recapLines.push('Actu IA : avec ton daily');
+  } else if (row.actu_mode === 'scheduled') {
+    const ah = row.actu_hour ?? 12;
+    const am = row.actu_minute ?? 30;
+    const amPad = am < 10 ? '0' + am : '' + am;
+    recapLines.push('Actu IA : ' + ah + 'h' + amPad);
   }
   recapLines.push('');
   recapLines.push('Je vais personnaliser tous mes conseils en fonction.');
