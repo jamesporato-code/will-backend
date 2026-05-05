@@ -1501,6 +1501,117 @@ router.get('/trials', adminAuth, async (req, res) => {
 });
 
 // ============================================
+// STRIPE — config check, cancel sub, customer portal
+// ============================================
+router.get('/stripe-config', adminAuth, async (req, res) => {
+  try {
+    const Stripe = require('stripe');
+    const secret = process.env.STRIPE_SECRET_KEY || '';
+    const stripe = new Stripe(secret);
+    const checks = {
+      mode: secret.startsWith('sk_live_')
+        ? 'live'
+        : secret.startsWith('sk_test_')
+        ? 'test'
+        : 'missing',
+      has_secret_key: !!secret,
+      has_webhook_secret: !!process.env.STRIPE_WEBHOOK_SECRET,
+      has_price_pro: !!process.env.STRIPE_PRICE_PRO,
+      price_pro: null,
+      price_pro_error: null,
+      webhooks: [],
+      webhooks_error: null,
+    };
+
+    if (process.env.STRIPE_PRICE_PRO) {
+      try {
+        const price = await stripe.prices.retrieve(process.env.STRIPE_PRICE_PRO);
+        checks.price_pro = {
+          id: price.id,
+          amount: price.unit_amount / 100,
+          currency: price.currency,
+          interval: price.recurring?.interval || null,
+          active: price.active,
+          livemode: price.livemode,
+          product: price.product,
+          nickname: price.nickname,
+        };
+      } catch (err) {
+        checks.price_pro_error = err.message;
+      }
+    }
+
+    try {
+      const endpoints = await stripe.webhookEndpoints.list({ limit: 10 });
+      checks.webhooks = endpoints.data.map(w => ({
+        id: w.id,
+        url: w.url,
+        enabled_events: w.enabled_events,
+        status: w.status,
+        livemode: w.livemode,
+      }));
+    } catch (err) {
+      checks.webhooks_error = err.message;
+    }
+
+    res.json(checks);
+  } catch (err) {
+    logger.error('Admin stripe-config error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/admin/subscriptions/:subId?at_period_end=1 - annule un abo Stripe
+router.delete('/subscriptions/:subId', adminAuth, async (req, res) => {
+  try {
+    const Stripe = require('stripe');
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const atPeriodEnd = req.query.at_period_end === '1';
+    const sub = atPeriodEnd
+      ? await stripe.subscriptions.update(req.params.subId, { cancel_at_period_end: true })
+      : await stripe.subscriptions.cancel(req.params.subId);
+    logger.info('Stripe subscription cancelled by admin', { subId: req.params.subId, atPeriodEnd });
+    res.json({
+      success: true,
+      subscription: {
+        id: sub.id,
+        status: sub.status,
+        cancel_at_period_end: sub.cancel_at_period_end,
+        current_period_end: sub.current_period_end,
+      },
+    });
+  } catch (err) {
+    logger.error('Admin cancel subscription error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/customer-portal/:userId - cree une session billing portal Stripe
+router.post('/customer-portal/:userId', adminAuth, async (req, res) => {
+  try {
+    const Stripe = require('stripe');
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const userResult = await query(
+      'SELECT id, stripe_customer_id, whatsapp_id FROM users WHERE id = $1',
+      [req.params.userId]
+    );
+    const user = userResult.rows[0];
+    if (!user) return res.status(404).json({ error: 'User non trouve' });
+    if (!user.stripe_customer_id) {
+      return res.status(400).json({ error: 'User n\'a pas de customer Stripe' });
+    }
+    const session = await stripe.billingPortal.sessions.create({
+      customer: user.stripe_customer_id,
+      return_url: (req.body && req.body.return_url) || `https://wa.me/${user.whatsapp_id}`,
+    });
+    res.json({ success: true, url: session.url });
+  } catch (err) {
+    logger.error('Admin customer-portal error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================
 // GET /api/admin/payment-issues - Paiements en echec + grace period
 // ============================================
 router.get('/payment-issues', adminAuth, async (req, res) => {
