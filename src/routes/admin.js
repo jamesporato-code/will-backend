@@ -1265,7 +1265,195 @@ const DEFAULT_TOOL_CARDS = [
     url: 'https://zapier.com',
     why_it_matters: "L'IA seule ne change pas ton workflow. Zapier fait la liaison : un email arrive → l'IA résume → ça atterrit dans Notion. C'est le glue qui transforme l'IA en automatisation utile.",
     how_to_use: "1. Compte gratuit (100 tasks/mois) sur zapier.com\n2. Crée un \"Zap\" : trigger (ex: nouvel email) + action (ex: envoyer à ChatGPT)\n3. Branche la sortie ChatGPT sur ta destination (Slack, Notion, etc.)",
-    target_level: 'advanced',
+    target_level: 'intermediate',
+    target_jobs: [],
+  },
+  // === DEV / TECH ===
+  {
+    slug: 'cursor', name: 'Cursor', category: 'Dev',
+    description: "L'IDE forké de VSCode avec une IA Claude/GPT-4 intégrée nativement. Édit ton code par instructions en langage naturel.",
+    url: 'https://cursor.com',
+    why_it_matters: "Plus d'aller-retour ChatGPT ↔ VSCode. Tu sélectionnes du code, tu écris ce que tu veux, Cursor refactore en place. La référence pour les devs IA-natifs en 2026.",
+    how_to_use: "1. Télécharge Cursor (gratuit avec quota)\n2. Cmd+K pour générer du code, Cmd+L pour chatter avec le projet entier\n3. Active 'Composer' pour des refactorings multi-fichiers",
+    target_level: 'intermediate',
+    target_jobs: ['dev'],
+  },
+  {
+    slug: 'github-copilot', name: 'GitHub Copilot', category: 'Dev',
+    description: "L'autocomplétion IA dans ton IDE habituel (VSCode, JetBrains, Neovim). Suggestions inline pendant que tu codes.",
+    url: 'https://github.com/features/copilot',
+    why_it_matters: "Le standard discret. 10 USD/mois, ça t'autocomplète 30-50% du code que tu allais écrire. ROI évident dès la 1re semaine pour un dev qui produit.",
+    how_to_use: "1. Abonnement Copilot via ton compte GitHub\n2. Installe l'extension dans ton IDE\n3. Tape un commentaire descriptif → Tab pour accepter la suggestion",
+    target_level: 'beginner',
+    target_jobs: ['dev'],
+  },
+  {
+    slug: 'v0', name: 'V0 (Vercel)', category: 'Dev / Design',
+    description: "Génère des composants React + Tailwind à partir d'un prompt ou d'une image. Conçu par Vercel, parfait pour prototyper vite.",
+    url: 'https://v0.dev',
+    why_it_matters: "Tu décris une UI ou tu colles un screenshot Figma, V0 sort le code React directement utilisable. Idéal pour les MVPs et les itérations design rapides.",
+    how_to_use: "1. Compte gratuit (avec quota) sur v0.dev\n2. Décris ton UI ou drop une image\n3. Itère via chat, exporte le code ou déploie sur Vercel d'un clic",
+    target_level: 'intermediate',
+    target_jobs: ['dev', 'creative', 'founder'],
+  },
+  {
+    slug: 'bolt', name: 'Bolt.new', category: 'Dev',
+    description: "Crée des applications web full-stack complètes (front + back + DB) depuis un simple prompt. WebContainer dans le navigateur.",
+    url: 'https://bolt.new',
+    why_it_matters: "Pas besoin d'environnement local. Tu décris ton app, Bolt génère le code, l'exécute en live, te laisse itérer. Magique pour valider une idée en 1h.",
+    how_to_use: "1. Va sur bolt.new (compte StackBlitz)\n2. Décris ton app en 2-3 phrases (stack incluse)\n3. Bolt génère + lance ; itère par chat, déploie sur Netlify directement",
+    target_level: 'beginner',
+    target_jobs: ['dev', 'founder'],
+  },
+  {
+    slug: 'lovable', name: 'Lovable', category: 'Dev / Founder',
+    description: "Plateforme française qui transforme une description en app web complète, avec base de données Supabase et auth incluses.",
+    url: 'https://lovable.dev',
+    why_it_matters: "L'alternative française à Bolt, plus orientée founder non-tech. Couvre auth + DB + déploiement sans configuration. Parfait pour valider une idée business.",
+    how_to_use: "1. Compte gratuit sur lovable.dev\n2. Décris ton app en français, Lovable génère\n3. Connecte Supabase auto pour la DB, push sur GitHub d'un clic",
+    target_level: 'beginner',
+    target_jobs: ['founder', 'dev'],
+  },
+  // === SALES ===
+  {
+    slug: 'apollo', name: 'Apollo.io', category: 'Sales',
+    description: "Base de données B2B (250M+ contacts) avec outreach automatisé. Le couteau suisse du SDR moderne.",
+    url: 'https://apollo.io',
+    why_it_matters: "Tu cherches le DPO d'une PME tech à Lyon ? Apollo te le sort + son email + 5 signaux d'achat récents. Plus efficace que LinkedIn Sales Nav pour beaucoup de cas.",
+    how_to_use: "1. Compte freemium (50 emails/mois) sur apollo.io\n2. Filtre par persona (titre, secteur, tech stack, taille)\n3. Lance une séquence email + LinkedIn auto",
+    target_level: 'intermediate',
+    target_jobs: ['sales', 'founder'],
+  },
+  {
+    slug: 'lemlist', name: 'Lemlist', category: 'Sales',
+    description: "Plateforme de cold outreach française. Personnalisation à grande échelle (variables custom, images dynamiques, vidéos).",
+    url: 'https://lemlist.com',
+    why_it_matters: "Le cold email générique a un taux de réponse de 1%. Lemlist + IA permet d'envoyer 100 mails ultra-personnalisés en 1h, avec un taux de 8-15%.",
+    how_to_use: "1. Inscris-toi sur lemlist.com (essai 14j)\n2. Importe ta liste prospects + enrichis avec Apollo/Clay\n3. Crée une séquence 5 touchpoints (email + LinkedIn) avec variables IA",
+    target_level: 'intermediate',
+    target_jobs: ['sales', 'founder'],
+  },
+  {
+    slug: 'clay', name: 'Clay', category: 'Sales / Data',
+    description: "Tableur sous stéroïdes pour orchestrer enrichissement, scoring et outreach B2B. Combine 100+ sources de données.",
+    url: 'https://clay.com',
+    why_it_matters: "Le terrain de jeu des SDRs ops. Tu prends une liste de 1000 leads, tu les enrichis (web, LinkedIn, news, technos), tu scores par IA, tu pousses vers ton outil d'outreach. Industriel.",
+    how_to_use: "1. Compte sur clay.com (essai 14j)\n2. Crée un workflow : input liste → enrichissement → scoring IA → output outreach\n3. Branche sur ta CRM via Zapier ou webhook",
+    target_level: 'intermediate',
+    target_jobs: ['sales'],
+  },
+  // === MARKETING ===
+  {
+    slug: 'jasper', name: 'Jasper', category: 'Marketing',
+    description: "Plateforme copywriting IA orientée équipes marketing : templates par usage (ad, email, blog), brand voice, workflows.",
+    url: 'https://jasper.ai',
+    why_it_matters: "Pour les équipes qui produisent du contenu en série et veulent une cohérence de ton sans baby-sitter ChatGPT. Vrai outil d'équipe avec brand voice, library, approbations.",
+    how_to_use: "1. Essai 7j sur jasper.ai\n2. Configure ta brand voice (échantillons + règles)\n3. Utilise les templates pour ad, blog, email — chaque sortie respecte la voix",
+    target_level: 'intermediate',
+    target_jobs: ['marketing'],
+  },
+  {
+    slug: 'surfer-seo', name: 'Surfer SEO', category: 'Marketing',
+    description: "Optimisation contenu data-driven. Tu rentres un mot-clé, Surfer te dit quoi écrire pour ranker (mots-clés, structure, longueur).",
+    url: 'https://surferseo.com',
+    why_it_matters: "Le contenu SEO 'à l'instinct' est mort. Surfer compare ton article aux 10 premiers résultats Google et te dit exactement ce qui manque pour les dépasser.",
+    how_to_use: "1. Compte sur surferseo.com (essai 7j)\n2. Lance un Content Editor sur ton mot-clé\n3. Atteins le score >70 en suivant les suggestions (mots-clés, headings, longueur)",
+    target_level: 'intermediate',
+    target_jobs: ['marketing'],
+  },
+  {
+    slug: 'adcreative-ai', name: 'AdCreative.ai', category: 'Marketing',
+    description: "Génère et teste des creatives publicitaires (image + texte) optimisées pour la performance. Connecté Meta Ads, Google Ads.",
+    url: 'https://adcreative.ai',
+    why_it_matters: "Tester 50 creatives manuellement = 1 semaine. AdCreative en sort 50 en 1h, score chaque variant par IA prédictive et te dit lesquelles lancer.",
+    how_to_use: "1. Compte sur adcreative.ai (essai 7j)\n2. Renseigne ta marque + objectif (lead, ventes)\n3. Génère 20-50 variantes, push les top scores dans ton ad manager",
+    target_level: 'intermediate',
+    target_jobs: ['marketing'],
+  },
+  {
+    slug: 'copy-ai', name: 'Copy.ai', category: 'Marketing',
+    description: "Plateforme copywriting IA polyvalente : workflows go-to-market complets (de la recherche au lancement).",
+    url: 'https://copy.ai',
+    why_it_matters: "Plus orienté workflows que Jasper. Tu construis une chaîne 'recherche concurrent → analyse → angle de positionnement → 5 ads' et ça tourne en 5 min.",
+    how_to_use: "1. Compte freemium sur copy.ai\n2. Choisis un workflow GTM ou crée le tien\n3. Connecte tes données (Salesforce, Hubspot) pour personnaliser",
+    target_level: 'intermediate',
+    target_jobs: ['marketing', 'sales'],
+  },
+  // === CREATIVE ===
+  {
+    slug: 'dall-e-3', name: 'DALL-E 3', category: 'Image',
+    description: "Le générateur d'image d'OpenAI, intégré à ChatGPT. Excellente compréhension du prompt, idéal pour itérer en conversation.",
+    url: 'https://openai.com/dall-e-3',
+    why_it_matters: "Inclus dans ChatGPT Plus. DALL-E 3 comprend mieux les prompts longs et nuancés que Midjourney, parfait pour les illustrations conceptuelles, les schémas, les visuels de présentation.",
+    how_to_use: "1. Active ChatGPT Plus (20 USD/mois)\n2. Demande directement 'Génère une image de…'\n3. Itère par conversation : 'rends-la plus minimaliste', 'change le fond en bleu nuit'",
+    target_level: 'beginner',
+    target_jobs: ['creative', 'marketing'],
+  },
+  {
+    slug: 'flux', name: 'Flux (Black Forest Labs)', category: 'Image',
+    description: "Modèle image open-source qui rivalise avec Midjourney. Disponible via Replicate, Fal.ai, ou en local.",
+    url: 'https://fal.ai/models/fal-ai/flux',
+    why_it_matters: "La meilleure qualité image open-source en 2026. Pas de censure stricte, peut tourner sur tes propres serveurs, intégrable via API. Pour les pros qui veulent contrôler.",
+    how_to_use: "1. Crée un compte fal.ai ou replicate.com (paiement à l'usage)\n2. Choisis Flux Pro pour la qualité, Flux Schnell pour la vitesse\n3. Intègre via API dans tes outils",
+    target_level: 'intermediate',
+    target_jobs: ['creative', 'dev'],
+  },
+  {
+    slug: 'runway', name: 'Runway', category: 'Vidéo',
+    description: "Génération et édition vidéo IA : text-to-video, image-to-video, suppression d'objet, motion brush.",
+    url: 'https://runwayml.com',
+    why_it_matters: "Création de B-roll en 30 secondes, suppression d'éléments dans une scène, génération d'idents : Runway transforme la prod vidéo. Standard chez les agences créa.",
+    how_to_use: "1. Compte sur runwayml.com (125 crédits gratuits)\n2. Choisis Gen-3 pour la qualité\n3. Génère depuis texte ou image, édite avec les outils Magic",
+    target_level: 'intermediate',
+    target_jobs: ['creative', 'marketing'],
+  },
+  {
+    slug: 'suno', name: 'Suno', category: 'Audio',
+    description: "Génère des morceaux musicaux complets (paroles + instrumental + voix) à partir d'une description.",
+    url: 'https://suno.com',
+    why_it_matters: "Jingle de podcast, musique de fond pour vidéo, idée de chanson : Suno te sort un morceau de 2 min en 30 secondes. Qualité bluffante.",
+    how_to_use: "1. Compte freemium sur suno.com (10 morceaux/jour)\n2. Décris le style + le sujet, ou fournis tes paroles\n3. Itère sur les variantes, télécharge en MP3",
+    target_level: 'beginner',
+    target_jobs: ['creative', 'marketing'],
+  },
+  {
+    slug: 'heygen', name: 'HeyGen', category: 'Vidéo / Avatars',
+    description: "Crée des vidéos avec des avatars IA qui parlent. Clone ta voix et ton visage pour produire des vidéos sans tournage.",
+    url: 'https://heygen.com',
+    why_it_matters: "Vidéos de formation interne, capsules marketing multilingues, onboarding personnalisé : tu écris un script, ton avatar le récite. Économie x10 vs tournage.",
+    how_to_use: "1. Compte sur heygen.com (essai gratuit)\n2. Choisis un avatar de la bibliothèque ou clone le tien (3 min de vidéo source)\n3. Colle ton script, choisis la langue, génère",
+    target_level: 'intermediate',
+    target_jobs: ['marketing', 'creative', 'hr'],
+  },
+  // === DATA / FINANCE ===
+  {
+    slug: 'julius-ai', name: 'Julius AI', category: 'Data',
+    description: "Analyse de données conversationnelle. Drop un CSV/Excel, pose tes questions en français, Julius produit des graphiques et insights.",
+    url: 'https://julius.ai',
+    why_it_matters: "L'alternative grand public à Code Interpreter pour ceux qui ne sont pas dans ChatGPT Plus. Spécialisé data, sait gérer de gros fichiers, exporte en PDF/Excel.",
+    how_to_use: "1. Compte sur julius.ai (essai gratuit)\n2. Drop ton fichier CSV/Excel\n3. Pose tes questions ('quel est le segment le plus rentable ?'), Julius génère analyses et viz",
+    target_level: 'intermediate',
+    target_jobs: ['finance', 'marketing', 'corporate'],
+  },
+  // === HR ===
+  {
+    slug: 'pin', name: 'Pin (HelloPin)', category: 'RH',
+    description: "Plateforme de pré-sourcing IA. Décris le poste, Pin trouve, qualifie et contacte les candidats potentiels sur LinkedIn.",
+    url: 'https://hellopin.io',
+    why_it_matters: "Recrutement tech difficile = pénurie + temps de sourcing énorme. Pin automatise les 60% bas du funnel (recherche + contact init), ton recruteur traite que les leads chauds.",
+    how_to_use: "1. Demo sur hellopin.io\n2. Décris le poste + critères + ton style de message\n3. Pin lance le sourcing + outreach, tu reviens valider les candidats intéressés",
+    target_level: 'intermediate',
+    target_jobs: ['hr', 'founder'],
+  },
+  // === UNIVERSAL ===
+  {
+    slug: 'make', name: 'Make (Integromat)', category: 'Automatisation',
+    description: "Alternative Zapier plus visuelle et puissante. Workflows complexes avec branches conditionnelles et boucles.",
+    url: 'https://make.com',
+    why_it_matters: "Là où Zapier devient cher au-dessus de 5000 tasks, Make est 5-10x moins cher. Et la canvas visuelle permet des workflows que Zapier ne sait pas faire (boucles, agrégations).",
+    how_to_use: "1. Compte freemium (1000 ops/mois) sur make.com\n2. Crée un scénario avec triggers + modules + filtres\n3. Active, débogue avec l'historique d'exécutions",
+    target_level: 'intermediate',
+    target_jobs: ['dev', 'marketing', 'sales'],
   },
 ];
 
@@ -1506,6 +1694,530 @@ Notes brutes :
 """`,
     example_output: "Décisions : Le budget Q2 est validé à 45k€ — décidé par Marc, à confirmer en CODIR du 25/03. Actions : Sophie prépare le brief design pour le 10/04...",
     target_level: 'beginner',
+    target_jobs: [],
+  },
+  // === SALES ===
+  {
+    slug: 'cold-email-relance', title: "Cold email de relance qui répond",
+    category: 'Sales',
+    use_case: "Relancer un prospect qui n'a pas répondu à 1 ou 2 emails sans avoir l'air désespéré.",
+    prompt_template: `Tu es un SDR senior B2B. Rédige un email de relance court (60 mots max) pour mon prospect qui n'a pas répondu à mes 2 derniers messages.
+
+Règles :
+- Objet : 5 mots max, qui pique la curiosité, pas "Relance"
+- Pas de "j'espère que vous allez bien"
+- Une phrase qui rappelle le contexte sans culpabiliser
+- Une nouvelle valeur (chiffre, cas client, signal récent du prospect)
+- CTA : 1 question fermée OU 1 option de désinscription explicite
+- Ton : direct, humain, jamais corporate
+
+Contexte :
+Prospect : [TITRE + ENTREPRISE]
+Mon offre : [OFFRE EN 1 LIGNE]
+Signal récent du prospect : [LEVÉE, RECRUTEMENT, PRESSE, RIEN]
+Mes 2 derniers messages portaient sur : [SUJET]`,
+    example_output: "Objet : 47% chez Acme — Bonjour Sophie, je sais que vous croulez sous les pings. Acme (votre concurrent direct) a passé 47% de ses leads en pipe en 8 semaines avec notre approche. Si pertinent, j'ai 15 min mardi 10h. Sinon dites-moi 'pas pour moi', je n'insiste plus.",
+    target_level: 'intermediate',
+    target_jobs: ['sales', 'founder'],
+  },
+  {
+    slug: 'qualif-bant', title: "Qualification BANT/MEDDIC d'un lead",
+    category: 'Sales',
+    use_case: "Évaluer rapidement si un lead vaut le coup avant d'investir 3 RDV pour rien.",
+    prompt_template: `Tu es un sales engineer qui qualifie les leads. À partir des notes de mon RDV de découverte, tu produis une fiche de qualification structurée.
+
+Pour chaque dimension, score de 0 à 5 + justification courte + question à poser au prochain RDV :
+
+1. **Budget** : ont-ils l'argent ? Est-il alloué ?
+2. **Authority** : qui décide vraiment ? Mon contact a-t-il le pouvoir ?
+3. **Need** : leur problème est-il concret + douloureux + urgent ?
+4. **Timeline** : décident-ils dans 30/60/90 jours ?
+5. **(MEDDIC) Champion** : ai-je un allié interne qui pousse pour nous ?
+
+Verdict final :
+- Score total /25
+- Recommandation : "Pousser" / "Continuer doucement" / "Drop"
+- 3 prochaines actions concrètes
+
+Notes du RDV :
+"""
+[NOTES BRUTES OU TRANSCRIPT]
+"""`,
+    example_output: "Budget : 3/5 — \"on a une enveloppe IA mais pas validée Q2\" → question : \"Qui valide l'enveloppe et quand ?\". Authority : 2/5 — mon contact est CTO mais le DAF arbitre…",
+    target_level: 'intermediate',
+    target_jobs: ['sales'],
+  },
+  {
+    slug: 'discovery-call-script', title: "Script d'appel discovery 30 min",
+    category: 'Sales',
+    use_case: "Préparer un appel de découverte structuré qui sort des vraies infos en 30 minutes.",
+    prompt_template: `Tu es un coach commercial. Construis-moi un script d'appel discovery de 30 min, structuré pour ressortir avec : besoin clair, budget, timeline, décideurs, prochaine étape.
+
+Découpe :
+- 0-2 min : opener + cadre de l'appel
+- 2-5 min : qualification rapide (rôle, contexte, top 3 priorités)
+- 5-15 min : exploration du problème (pourquoi maintenant, ce qu'ils ont essayé, le coût du status quo)
+- 15-22 min : exploration de la solution idéale (à quoi ressemblerait le succès, qui d'autre est impliqué, contraintes)
+- 22-27 min : process de décision (budget, timeline, décideurs, alternatives)
+- 27-30 min : closing (synthèse, prochaine étape, calendrier)
+
+Pour chaque section :
+- 2-3 questions ouvertes type "raconte-moi"
+- 1 question piège pour valider la sincérité
+- Ce que je dois prendre en note
+
+Mon offre : [OFFRE]
+Type de prospect : [TITRE + SECTEUR]
+Mon objectif post-appel : [DEMO / RDV TECHNIQUE / DROP]`,
+    example_output: "0-2 min : \"Ravi de vous rencontrer Camille. On a 30 min — mon objectif c'est de comprendre votre contexte, voir si on peut aider, et si oui définir une prochaine étape claire. Ça vous va ?\"…",
+    target_level: 'intermediate',
+    target_jobs: ['sales'],
+  },
+  // === MARKETING ===
+  {
+    slug: 'hook-linkedin', title: "Hook LinkedIn qui fait scroller",
+    category: 'Marketing',
+    use_case: "Tu écris un post LinkedIn et il faut que les 3 premières lignes accrochent assez pour qu'on déplie le 'voir plus'.",
+    prompt_template: `Tu es un content creator LinkedIn senior. À partir de mon idée de post, génère 5 hooks différents (3 lignes max chacun) qui poussent au "voir plus".
+
+Règles :
+- Pas de "Aujourd'hui je vous parle de…"
+- Pas de "Connaissez-vous…"
+- Privilégie : chiffre choquant, contre-intuition, anecdote perso, question piège, mini-histoire
+- Une émotion par hook : surprise, curiosité, agacement, identification, fierté
+- Phrase 1 = punch ; phrase 2 = développe ; phrase 3 = teaser sur la suite
+
+Pour chaque hook : indique le levier émotionnel + à qui ça parle.
+
+Mon idée : [IDÉE]
+Mon angle / ma thèse : [CE QUE JE VEUX FAIRE PASSER]
+Mon audience cible : [QUI]`,
+    example_output: "Hook 1 (surprise) : 'On a viré 60% de notre tooling marketing en 3 mois. Le résultat : +30% de pipe. Voici les 5 outils qu'on a gardés et pourquoi…'",
+    target_level: 'intermediate',
+    target_jobs: ['marketing', 'founder'],
+  },
+  {
+    slug: 'persona-utilisateur', title: "Persona utilisateur en 30 minutes",
+    category: 'Marketing / Produit',
+    use_case: "Avant de lancer un produit ou une campagne, tu veux un persona précis qui guide les décisions, pas un cliché Pinterest.",
+    prompt_template: `Tu es un UX researcher senior. À partir des informations sur mon utilisateur cible, construis un persona actionnable.
+
+Structure :
+1. **Identité** : prénom, âge, métier, niveau d'anciennenneté, secteur
+2. **Sa journée type** : 3 moments clés où il/elle pourrait utiliser mon produit
+3. **Ses 3 vrais problèmes** (pas inventés, basés sur les inputs)
+4. **Ce qu'il/elle a déjà essayé** : outils + raisons de l'abandon
+5. **Ses critères de décision** : 3 critères ranked (prix, gain de temps, intégration, etc.)
+6. **Ses canaux de confiance** : où il/elle s'informe (newsletters, podcasts, communautés)
+7. **Ce qui le/la disqualifierait** : un déclencheur de "non" immédiat
+8. **Le pitch qui marche** : 2 phrases en mode "elevator"
+
+Évite les caricatures (\"il aime le café\", \"elle adore Netflix\") — tout doit être actionnable pour le marketing ou le produit.
+
+Mon produit : [PRODUIT EN 1 PHRASE]
+Inputs sur l'utilisateur : [INTERVIEWS, SONDAGE, CRM]`,
+    example_output: "Identité : Camille, 34 ans, Head of Growth, scaleup B2B SaaS Series A, 80 employés…",
+    target_level: 'intermediate',
+    target_jobs: ['marketing', 'product', 'founder'],
+  },
+  {
+    slug: 'plan-editorial-12sem', title: "Plan éditorial 12 semaines",
+    category: 'Marketing',
+    use_case: "Tu prends en main le contenu d'une marque et tu veux 3 mois de planning sans tout improviser.",
+    prompt_template: `Tu es un content strategist senior. Construis un plan éditorial de 12 semaines, à raison de 3 contenus/semaine, structuré autour de 3 piliers narratifs.
+
+Format :
+1. **3 piliers** : pour chaque, 1 promesse + le persona qu'il sert + 5 angles potentiels
+2. **Calendrier semaine par semaine** :
+   - Lundi (pilier #1) : titre + format (post, vidéo, article) + objectif (notoriété/engagement/conversion)
+   - Mercredi (pilier #2) : idem
+   - Vendredi (pilier #3) : idem
+3. **3 séries récurrentes** sur les 12 semaines (ex: \"Le retour client du mois\")
+4. **Les 5 events / saisonnalités** à ne pas rater dans la période
+5. **KPIs** : 1 KPI principal + 2 secondaires à suivre
+
+Marque : [QUI]
+Audience : [PERSONA]
+Objectif business : [LEAD / CA / NOTORIÉTÉ]
+Période : [DATES]`,
+    example_output: "Pilier 1 : 'L'expertise terrain' — promesse : 'On vous montre comment on fait, sans bullshit'…",
+    target_level: 'intermediate',
+    target_jobs: ['marketing', 'creative'],
+  },
+  {
+    slug: 'brief-creatif', title: "Brief créatif clair pour agence ou freelance",
+    category: 'Marketing / Créatif',
+    use_case: "Tu briefes un designer, une agence ou un freelance et tu veux éviter les 4 allers-retours pour mettre tout le monde d'accord.",
+    prompt_template: `Tu es un strategic planner. À partir de mon contexte, rédige un brief créatif court mais complet (1 page) pour le freelance ou l'agence qui va exécuter.
+
+Structure :
+1. **Contexte business** (3 phrases) : pourquoi on fait ça, maintenant
+2. **Cible** : 1 persona précis + 1 phrase d'insight clé
+3. **Insight** : la tension que la création doit résoudre
+4. **Promesse** : ce qu'on veut faire ressentir/comprendre
+5. **Tone of voice** : 3 adjectifs + 1 marque qui incarne (ou contre-modèle "surtout pas comme X")
+6. **Reasons to believe** : 3 preuves qu'on peut donner
+7. **Mandatories** : ce qui est obligatoire (logo, claim, CTA, format)
+8. **Anti-mandatories** : ce qu'on ne veut surtout PAS
+9. **Livrables attendus** : nb de pistes, format, deadline
+10. **Budget + délai**
+
+Sans jargon, sans phrases creuses. Si une info manque, écris \"À préciser\".
+
+Inputs :
+[CONTEXTE LIBRE QUE TU AS]`,
+    example_output: "Contexte business : On lance la V2 de notre produit en septembre. Notre concurrent a sorti un truc agressif et nos leads se posent des questions…",
+    target_level: 'intermediate',
+    target_jobs: ['marketing', 'creative'],
+  },
+  // === DEV / TECH ===
+  {
+    slug: 'code-review', title: "Code review structurée",
+    category: 'Dev',
+    use_case: "Tu reviewes un PR et tu veux des commentaires utiles, pas du picking sur le formatage.",
+    prompt_template: `Tu es un staff engineer qui fait des reviews exigeantes mais bienveillantes. Voici un diff. Produis une review structurée :
+
+1. **Verdict** : ✅ Mergeable / 🟡 Demande corrections / 🔴 Refonte nécessaire
+2. **3 points forts** (pas du flagornage, vraiment)
+3. **Problèmes critiques** (bugs, sécurité, perfs) — rangés par sévérité
+4. **Améliorations** (lisibilité, design, nommage) — niveau "nice to have"
+5. **Tests manquants** : ce qui doit être couvert avant merge
+6. **Questions ouvertes** : si quelque chose n'est pas clair, demande à l'auteur
+7. **Suggestion finale** : 1 phrase qui résume "voici ce que je ferais à ta place"
+
+Pour chaque commentaire : cite le fichier + ligne + extrait pertinent.
+
+Diff :
+"""
+[DIFF GIT OU PR]
+"""
+
+Stack / contraintes du projet : [TECH STACK + CONTEXTE]`,
+    example_output: "Verdict : 🟡 Demande corrections. 3 points forts : 1) bonne extraction du service en module isolé, 2) tests d'intégration ajoutés…",
+    target_level: 'intermediate',
+    target_jobs: ['dev'],
+  },
+  {
+    slug: 'adr-architecture', title: "Architecture Decision Record (ADR)",
+    category: 'Dev',
+    use_case: "Tu prends une décision technique structurante et tu veux la documenter proprement pour les futurs devs.",
+    prompt_template: `Tu es un staff engineer qui rédige des ADR (Architecture Decision Records) clairs. À partir de ma décision, produis un ADR au format Michael Nygard :
+
+1. **Titre** : "ADR-XXX : [décision en 6 mots]"
+2. **Status** : Proposed / Accepted / Deprecated / Superseded
+3. **Context** : la situation, les contraintes, les forces en jeu (3-5 phrases)
+4. **Decision** : ce qu'on a décidé, en 1 phrase actionnable
+5. **Consequences** :
+   - Positives (2-3 puces)
+   - Négatives (2-3 puces)
+   - Neutral (1-2 puces)
+6. **Alternatives considérées** : 2-3 options évaluées + pourquoi rejetées (1 ligne chacune)
+7. **References** : liens vers RFCs, docs, benchmarks
+
+Style : neutre, factuel, pas de marketing. 400 mots max.
+
+Ma décision : [LA DÉCISION]
+Contexte : [POURQUOI MAINTENANT]
+Alternatives évaluées : [LISTE]`,
+    example_output: "ADR-014 : Adopter Postgres pour le pricing engine. Status : Accepted. Context : Le pricing actuel tourne sur DynamoDB. Les 3 derniers incidents ont montré que…",
+    target_level: 'intermediate',
+    target_jobs: ['dev'],
+  },
+  {
+    slug: 'test-cases-from-spec', title: "Cas de tests à partir d'une spec",
+    category: 'Dev',
+    use_case: "Tu as une feature à coder et tu veux la liste des tests à écrire avant même de commencer (TDD).",
+    prompt_template: `Tu es un QA engineer expert. À partir de cette spec, génère la liste des cas de tests à couvrir.
+
+Structure :
+1. **Tests unitaires** : par fonction publique
+2. **Tests d'intégration** : interactions entre modules / API / DB
+3. **Tests E2E** : parcours utilisateur complet
+4. **Cas limites** : valeurs vides, max, négatives, concurrentes
+5. **Tests de sécurité** : injections, auth, rate limiting
+6. **Tests de perf** : 1-2 cas si pertinent
+
+Pour chaque test :
+- Nom au format \`should_<comportement>_when_<condition>\`
+- Input : exemple précis
+- Output attendu : exemple précis
+- Priorité : Must / Should / Could
+
+Évite les tests redondants. Vise la couverture du comportement, pas du code.
+
+Spec :
+"""
+[SPEC OU TICKET]
+"""`,
+    example_output: "Tests unitaires : 1) should_return_403_when_user_not_authenticated. Input : POST /api/orders sans token. Output : { status: 403, error: 'unauthorized' }. Priority: Must…",
+    target_level: 'intermediate',
+    target_jobs: ['dev'],
+  },
+  // === FOUNDER ===
+  {
+    slug: 'pitch-deck-10-slides', title: "Pitch deck investisseur 10 slides",
+    category: 'Founder',
+    use_case: "Tu prépares un deck pour une levée Seed/Série A et tu veux la structure qui marche, pas une réinvention.",
+    prompt_template: `Tu es un partner VC qui voit 30 decks par semaine. Aide-moi à construire un deck de 10 slides qui passe le filtre des 90 secondes.
+
+Pour chaque slide : titre + bullet points + 1 visuel suggéré.
+
+1. **Title** : nom + claim 6 mots + le total raise
+2. **Problem** : la douleur, en 1 phrase + 1 chiffre choc
+3. **Solution** : ce qu'on fait + screenshot/diagramme
+4. **Why now** : la fenêtre de tir (régulation, tech, marché)
+5. **Market** : TAM/SAM/SOM avec sources
+6. **Traction** : 3 metrics qui prouvent qu'on n'est pas idiots (rev, users, growth)
+7. **Business model** : comment on fait de l'argent + unit economics
+8. **Competition** : matrice 2x2 où on est seul en haut à droite
+9. **Team** : 3 founders, leur edge, pourquoi NOUS
+10. **Ask** : montant + use of funds + 12-18 mois milestones
+
+Style : 1 idée par slide, pas de pavés, chiffres ronds.
+
+Inputs :
+Boîte : [NOM + DESCRIPTION 2 LIGNES]
+Stade : [PRE-SEED / SEED / SERIES A]
+Métriques actuelles : [REV, USERS, GROWTH]
+Le raise visé : [MONTANT + UTILISATION]`,
+    example_output: "Slide 1 — Title : Acme · 'Le Stripe de l'IA pour les PME' · Seed round 2,5 M€…",
+    target_level: 'intermediate',
+    target_jobs: ['founder'],
+  },
+  {
+    slug: 'okr-trimestre', title: "OKRs trimestriels carrés",
+    category: 'Founder / Manager',
+    use_case: "Tu démarres un trimestre et tu veux des OKRs qui motivent l'équipe sans tomber dans le KPI plat.",
+    prompt_template: `Tu es un coach OKR senior (méthode Christina Wodtke). À partir de l'objectif business du trimestre, structure des OKRs carrés.
+
+Pour le trimestre :
+- **1 Objective** unique, qualitatif, ambitieux mais réaliste, qui inspire (max 8 mots)
+- **3 Key Results** mesurables, chiffrés, qui dénotent un progrès réel (pas du \"on y travaille\")
+- Pour chaque KR : la formule de calcul + la baseline + la cible
+
+Critères de validation :
+- Objective : si on l'atteint, l'année est gagnée ?
+- Key Results : un sceptique pourrait-il contester qu'on a réussi ?
+- Si je rate 1 KR sur 3, c'est encore un succès ?
+
+Bonus :
+- 1 \"Healthcheck metric\" à surveiller (ne pas casser le côté dark)
+- 3 risques identifiés + mitigation
+
+Contexte business : [SITUATION + AMBITION]
+Équipe concernée : [TAILLE + FONCTION]
+Période : [Q + DATES]`,
+    example_output: "Objective : Devenir l'outil incontournable des équipes RH françaises. KR1 : passer de 12 à 30 logos clients (formule : COUNT distinct paying customers, baseline 12, cible 30)…",
+    target_level: 'intermediate',
+    target_jobs: ['founder', 'corporate'],
+  },
+  {
+    slug: 'hiring-spec', title: "Spec poste claire pour recruter",
+    category: 'RH / Founder',
+    use_case: "Avant de recruter, tu veux une fiche de poste précise qui filtre les bons profils sans rebuter les meilleurs.",
+    prompt_template: `Tu es un recruteur senior tech. À partir du brief, rédige une fiche poste qui :
+- attire les A-players
+- filtre les candidatures faibles
+- donne au candidat tout ce qu'il faut pour décider en 5 min
+
+Structure :
+1. **Pourquoi ce poste maintenant ?** (3 phrases honnêtes)
+2. **Mission** : 1 phrase + 3 résultats attendus dans les 6 mois
+3. **À quoi ressemble une journée type** (5 puces)
+4. **Ce que tu apportes** : 4 must-haves + 3 bonus (jamais 12 critères)
+5. **Ce que tu n'auras PAS** : ce qui n'est pas dans le scope (transparence)
+6. **Stack / outils** : ce qui est utilisé + ce qu'on cherche à intégrer
+7. **L'équipe** : qui tu rejoins (2-3 lignes par profil)
+8. **Compensation** : fourchette précise + variable + equity si applicable
+9. **Process** : 3-4 étapes max + délai entre chaque
+10. **Comment postuler** : 1 phrase + ce qu'on attend (CV ? lien ? case study ?)
+
+Évite : "rockstar", "ninja", "passionné", "culture fit", "fast-paced environment".
+
+Inputs :
+Boîte : [QUI + STADE]
+Poste : [TITRE]
+Niveau : [JUNIOR / MID / SENIOR / STAFF]
+Budget : [FOURCHETTE]
+Pourquoi c'est intéressant maintenant : [TRACTION, IMPACT, ÉQUIPE]`,
+    example_output: "Pourquoi maintenant : On a clos la Series A en mars, on passe de 8 à 25 personnes en 12 mois. Le 1er ML engineer, c'est toi…",
+    target_level: 'intermediate',
+    target_jobs: ['hr', 'founder'],
+  },
+  // === HR / MANAGER ===
+  {
+    slug: 'feedback-difficile', title: "Préparer un feedback difficile",
+    category: 'RH / Manager',
+    use_case: "Tu dois donner un feedback difficile (perf, comportement) et tu veux le faire bien : ferme sur les faits, juste sur les solutions.",
+    prompt_template: `Tu es un coach manager. Aide-moi à préparer un entretien de feedback difficile en suivant la méthode SBI (Situation / Behavior / Impact) + plan d'action.
+
+Structure :
+1. **L'objectif de l'entretien** : ce que je veux qu'il/elle reparte avec
+2. **La SBI principale** :
+   - Situation : contexte précis (quand, où, qui)
+   - Behavior : comportement observé (factuel, pas d'interprétation)
+   - Impact : conséquence concrète (sur l'équipe, le client, le projet)
+3. **Anticiper les réactions** : 3 réactions possibles (déni, justification, larmes) + ma réponse pour chacune
+4. **Cadre de l'échange** : phrase d'ouverture + temps imparti + tone
+5. **Plan d'action** : 2-3 actions concrètes attendues + dates de check-in
+6. **Mes ressources internes** : quelles formations / mentoring / outils je peux proposer
+7. **La ligne rouge** : à quoi je m'engage en cas de non-progrès
+
+Style : chaque section en 3-5 lignes max. Pas de \"il faudrait\" — toujours des phrases actionnables.
+
+Contexte :
+Personne : [RÔLE + ANCIENNETÉ]
+Le problème : [DESCRIPTION FACTUELLE]
+Ce que j'ai déjà essayé : [HISTORIQUE]
+Mon objectif : [CHANGEMENT VISÉ]`,
+    example_output: "Objectif : Que Marc reparte conscient que sa façon de couper la parole en réunion bloque l'équipe + qu'il s'engage sur 2 actions…",
+    target_level: 'intermediate',
+    target_jobs: ['hr', 'corporate'],
+  },
+  {
+    slug: 'offre-emploi-inclusive', title: "Offre d'emploi inclusive",
+    category: 'RH',
+    use_case: "Réécrire une offre d'emploi pour qu'elle attire des candidats plus divers sans tomber dans le langage corporate.",
+    prompt_template: `Tu es un expert recrutement DEI (Diversity, Equity, Inclusion). À partir de mon offre actuelle, réécris-la en suivant ces règles :
+
+1. **Genre** : pas de masculin générique. \"Tu seras\" plutôt que \"Le candidat sera\". Adjectifs neutres.
+2. **Critères** : suppression des prérequis arbitraires (ex: \"5 ans d'expérience minimum\" remplacé par \"capable de…\"). Distinction nette \"Must\" / \"Bonus\".
+3. **Langage** : suppression de termes virilisants (\"ninja\", \"warrior\", \"crush\", \"hardcore\") et de jargon corporate vide (\"culture fit\", \"passionné\", \"famille\").
+4. **Compensation** : mention explicite de la fourchette salariale + benefits.
+5. **Process** : étapes claires, délais, qui rencontre qui.
+6. **Inclusion explicite** : phrase d'engagement DEI sourced (pas template Linkedin).
+7. **Accessibilité** : mention des aménagements possibles si pertinent.
+
+Format de sortie : offre réécrite + tableau des changements (avant / après / pourquoi).
+
+Mon offre actuelle :
+"""
+[OFFRE]
+"""`,
+    example_output: "Offre réécrite : 'Rejoindre [boîte] comme Product Designer'… | Tableau changements : | Avant: 'Le candidat aura 5 ans d'XP' / Après: 'Tu te sens à l'aise pour mener un projet design de A à Z' / Pourquoi: l'expérience prouvée importe plus que les années.",
+    target_level: 'beginner',
+    target_jobs: ['hr'],
+  },
+  // === FINANCE ===
+  {
+    slug: 'analyse-pnl', title: "Analyse P&L en 5 questions",
+    category: 'Finance',
+    use_case: "Tu as un P&L sous les yeux et tu veux en sortir une analyse claire pour ton CODIR ou ton board.",
+    prompt_template: `Tu es un CFO senior. À partir de ce P&L, produis une analyse structurée en répondant à 5 questions.
+
+Format : pour chaque question, 2-3 phrases + 1 chiffre clé + 1 action recommandée.
+
+1. **Où on gagne de l'argent ?** : top 3 lignes de revenus + leur trajectoire
+2. **Où on en perd ?** : top 3 lignes de coûts + leur trajectoire
+3. **Quelles tendances anormales ?** : 2-3 variations >20% vs N-1 ou budget
+4. **Quels risques pour les 6 mois à venir ?** : 2-3 risques identifiés
+5. **Si je n'ai qu'1 levier à actionner, c'est quoi ?** : recommandation principale chiffrée
+
+Bonus :
+- 3 questions à poser au prochain CODIR
+- 3 KPIs à surveiller mensuellement
+
+Style : factuel, chiffré, pas de \"il convient de\". Vise une lecture en 5 min par un dirigeant non-financier.
+
+P&L :
+"""
+[CHIFFRES P&L]
+"""
+
+Contexte : [PÉRIODE + COMPARATIFS]`,
+    example_output: "1. Où on gagne : SaaS B2B représente 68% du CA, en croissance de 22% YoY. Action : doubler l'équipe sales sur ce segment…",
+    target_level: 'intermediate',
+    target_jobs: ['finance', 'founder', 'corporate'],
+  },
+  {
+    slug: 'budget-previsionnel', title: "Budget prévisionnel 12 mois",
+    category: 'Finance / Founder',
+    use_case: "Tu construis un prévisionnel pour ta boîte (création, renouvellement, levée) et tu veux qu'il tienne debout.",
+    prompt_template: `Tu es un CFO de scale-up. Aide-moi à construire un budget prévisionnel sur 12 mois, mois par mois, qui soit défendable face à un investisseur ou une banque.
+
+Structure (en tableau) :
+1. **Revenus** : par segment ou produit, avec hypothèses (taux de conversion, ticket moyen, churn)
+2. **Coûts variables** : COGS, commissions, infra
+3. **Marge brute** : montant + %
+4. **Coûts fixes** : salaires (avec détail recrutements), loyers, outils, marketing fixe
+5. **EBITDA** : montant + %
+6. **Trésorerie cumulée** : avec point bas + alerte cash <3 mois
+
+Pour chaque ligne :
+- 1 phrase d'hypothèse derrière le chiffre (\"on suppose 12 nouveaux logos/mois\")
+- Source de la donnée (\"basé sur le run rate des 3 derniers mois\")
+
+Stress tests :
+- Scenario pessimiste : -30% sur les revenus
+- Scenario optimiste : +30% sur les revenus
+- Pour chaque : nouveau point bas + recommandation
+
+Contexte boîte : [STADE + ANCIENNETÉ]
+Métriques actuelles : [CA, CROISSANCE, BURN]
+Objectif des 12 prochains mois : [LEVÉE / RENTABILITÉ / CROISSANCE]`,
+    example_output: "Janvier — Revenus : 92k€ (12 nouveaux logos x ticket moyen 7,5k€ + 2k€ d'expansion sur la base existante). Hypothèse : on garde notre taux de conversion 8% inbound…",
+    target_level: 'intermediate',
+    target_jobs: ['finance', 'founder'],
+  },
+  // === DATA / PRODUCTIVITY ===
+  {
+    slug: 'comparer-3-options', title: "Comparer 3 options avec une matrice de décision",
+    category: 'Productivité / Décisionnel',
+    use_case: "Tu hésites entre plusieurs choix (outil, candidat, fournisseur, stratégie) et tu veux décider sans biais.",
+    prompt_template: `Tu es un consultant en aide à la décision. Construis une matrice comparative pour mes 3 options.
+
+Structure :
+1. **Lister les critères** : 5-8 critères pertinents pour ma décision (poids 1-5 par critère selon importance)
+2. **Évaluer chaque option** sur chaque critère (note 0-5 + 1 phrase de justification)
+3. **Calculer le score pondéré** par option
+4. **Identifier les sensibilités** : si je change le poids d'1 critère, le verdict change-t-il ?
+5. **Verdict + caveat** : la recommandation + ce qui pourrait l'invalider
+
+Format de sortie : tableau Markdown + 1 paragraphe d'analyse.
+
+Anti-règles :
+- Pas de critère qui dépend uniquement du goût ("c'est plus joli")
+- Pas de score parfait 5/5 sans justification chiffrée
+- Si une info manque, marque \"À investiguer\"
+
+Ma décision : [QUOI CHOISIR]
+Option A : [DESCRIPTION]
+Option B : [DESCRIPTION]
+Option C : [DESCRIPTION]
+Mon contexte / contraintes : [BUDGET, TIMING, ÉQUIPE]`,
+    example_output: "| Critère | Poids | Option A | Option B | Option C |\n| Coût TCO 3 ans | 5 | 3 (45k€) | 4 (30k€) | 2 (60k€) |\n| Vitesse de mise en place | 4 | 5 (1 sem) | 3 (3 sem) |…",
+    target_level: 'intermediate',
+    target_jobs: ['founder', 'corporate', 'finance'],
+  },
+  {
+    slug: 'analyser-csv', title: "Analyser un fichier CSV/Excel par questions",
+    category: 'Data',
+    use_case: "Tu as un fichier de données (export CRM, finances, RH) et tu veux en sortir des insights sans formules Excel.",
+    prompt_template: `Tu es un data analyst senior. À partir des données fournies, réponds à mes questions et propose des insights non demandés mais pertinents.
+
+Pour chaque réponse :
+1. **La donnée brute** (chiffre + période + filtres appliqués)
+2. **L'analyse** : ce que ça veut dire en 2 phrases
+3. **Le contexte** : par rapport à quoi (mois précédent, moyenne, benchmark)
+4. **Action proposée** : 1 chose à faire avec cette info
+
+À la fin :
+- **3 insights non demandés** : trucs intéressants que tu as repérés dans les données
+- **2 questions que je devrais me poser** : angles morts
+- **1 visualisation recommandée** : quel graphe sortir pour communiquer ça
+
+Si une donnée manque ou est incohérente, signale-le explicitement plutôt que d'inventer.
+
+Données :
+"""
+[CSV / EXCEL CONTENT OU EXPORT]
+"""
+
+Mes questions : [LISTE DES QUESTIONS]
+Contexte business : [QUI EST LIRA L'ANALYSE]`,
+    example_output: "Q1 : Quel est mon top 3 segments client en CA ? R : Donnée brute : SaaS Mid-Market 38% du CA Q1, Enterprise 32%, SMB 18%. Analyse : Le Mid-Market progresse de 12% vs Q4…",
+    target_level: 'intermediate',
+    target_jobs: ['finance', 'marketing', 'product'],
   },
 ];
 
@@ -1532,6 +2244,67 @@ async function seedPromptCardsIfEmpty() {
     return { error: err.message };
   }
 }
+
+// ============================================
+// POST /api/admin/tool-cards/sync-defaults — pousse les tool cards manquantes
+// (par slug) sans toucher aux existantes.
+// ============================================
+router.post('/tool-cards/sync-defaults', adminAuth, async (req, res) => {
+  try {
+    const existing = await query('SELECT slug FROM tool_cards');
+    const existingSlugs = new Set(existing.rows.map(r => r.slug));
+    let added = 0;
+    const addedSlugs = [];
+    for (let i = 0; i < DEFAULT_TOOL_CARDS.length; i++) {
+      const t = DEFAULT_TOOL_CARDS[i];
+      if (existingSlugs.has(t.slug)) continue;
+      await query(
+        `INSERT INTO tool_cards (slug, name, category, description, url, why_it_matters, how_to_use, target_level, target_jobs, active, position)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10)`,
+        [t.slug, t.name, t.category || null, t.description || null, t.url || null,
+         t.why_it_matters || null, t.how_to_use || null, t.target_level || null,
+         JSON.stringify(t.target_jobs || []), i]
+      );
+      added++;
+      addedSlugs.push(t.slug);
+    }
+    require('../services/cards').clearCache();
+    logger.info('Sync DEFAULT_TOOL_CARDS', { added });
+    res.json({ success: true, added, addedSlugs });
+  } catch (err) {
+    logger.error('Admin tool-cards sync-defaults error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/admin/prompt-cards/sync-defaults — pousse les prompt cards manquantes
+router.post('/prompt-cards/sync-defaults', adminAuth, async (req, res) => {
+  try {
+    const existing = await query('SELECT slug FROM prompt_cards');
+    const existingSlugs = new Set(existing.rows.map(r => r.slug));
+    let added = 0;
+    const addedSlugs = [];
+    for (let i = 0; i < DEFAULT_PROMPT_CARDS.length; i++) {
+      const p = DEFAULT_PROMPT_CARDS[i];
+      if (existingSlugs.has(p.slug)) continue;
+      await query(
+        `INSERT INTO prompt_cards (slug, title, category, use_case, prompt_template, example_output, target_level, target_jobs, active, position)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9)`,
+        [p.slug, p.title, p.category || null, p.use_case || null,
+         p.prompt_template, p.example_output || null, p.target_level || null,
+         JSON.stringify(p.target_jobs || []), i]
+      );
+      added++;
+      addedSlugs.push(p.slug);
+    }
+    require('../services/cards').clearCache();
+    logger.info('Sync DEFAULT_PROMPT_CARDS', { added });
+    res.json({ success: true, added, addedSlugs });
+  } catch (err) {
+    logger.error('Admin prompt-cards sync-defaults error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ============================================
 // CRUD Tool cards
