@@ -230,6 +230,22 @@ router.post('/', async (req, res) => {
       return;
     }
 
+    // Bouton "Suivante" sur l'actu IA -> envoie la news a l'index demande
+    if (parsed.buttonId?.startsWith('actu_next_')) {
+      const idx = parseInt(parsed.buttonId.substring('actu_next_'.length), 10);
+      const { loadOrGenerateActuNews, deliverActuNews } = require('../cron/scheduler');
+      const newsArray = await loadOrGenerateActuNews(user);
+      if (!newsArray || !newsArray[idx]) {
+        await whatsapp.sendText(
+          user.whatsapp_id,
+          'Pas d\'actu suivante pour aujourd\'hui. Tape /menu pour voir les autres options.'
+        );
+        return;
+      }
+      await deliverActuNews(user, newsArray, idx);
+      return;
+    }
+
     // Free-text scopé : changement d'heure du daily (depuis Mon compte)
     if (parsed.text && user.free_text_context === 'awaiting_hour') {
       await menu.handleAwaitingHourText(user, parsed.text);

@@ -158,7 +158,7 @@ async function generateActuIA(user) {
     actuData = await webSearch('latest AI news today artificial intelligence tools 2026');
   }
 
-  const prompt = `Tu es Will, coach IA sur WhatsApp. Genere le BULLETIN ACTU IA du jour.
+  const prompt = `Tu es Will, coach IA sur WhatsApp. Genere 3 news IA distinctes pour aujourd'hui.
 
 PROFIL :
 ${buildUserContext(user)}
@@ -167,26 +167,39 @@ ${buildLevelGuidance(user)}
 
 ${actuData ? 'ACTUALITES FRAICHES (source web) :\n' + actuData + '\n' : ''}
 
-STRUCTURE OBLIGATOIRE :
-1. Titre court du bulletin (ex: "Actu IA du jour")
-2. NEWS 1 : titre + 2 phrases d'analyse + "ce que ca change pour toi"
-3. NEWS 2 : titre + 2 phrases d'analyse + "ce que ca change pour toi"
-4. NEWS 3 : titre + 2 phrases d'analyse + "ce que ca change pour toi"
+FORMAT DE SORTIE OBLIGATOIRE :
+- Genere EXACTEMENT 3 news.
+- Separe-les par une ligne contenant uniquement "---" (sans rien autour).
+- Pour chaque news :
+  - Premiere ligne : un titre court (max 8 mots, sans numerotation)
+  - 2 phrases d'analyse adaptees au metier de l'utilisateur
+  - Une derniere ligne : "Ce que ca change pour toi : <action concrete en 1 phrase>"
 
-REGLES :
-- 150-200 mots
-- Adapte l'angle au domaine de l'utilisateur
-- Texte brut WhatsApp, pas de markdown
-- 3-4 emojis
-- Chaque news doit etre concrete et actionnable`;
+INTERDICTIONS :
+- Pas de bulletin general, pas de header avant la 1re news
+- Pas de "News 1", "News 2", "News 3" dans le texte
+- Pas de markdown (pas de **, ##, etc)
+
+CHAQUE NEWS DOIT ETRE :
+- 50-70 mots maximum
+- Concrete et actionnable pour son metier
+- 1 emoji max par news`;
 
   try {
     const response = await anthropic.messages.create({
-      model: MODEL, max_tokens: 500, temperature: 0.7,
-      system: 'Tu es un journaliste IA expert. Texte brut uniquement.',
+      model: MODEL, max_tokens: 700, temperature: 0.7,
+      system: 'Tu es un journaliste IA expert. Texte brut uniquement, jamais de markdown.',
       messages: [{ role: 'user', content: prompt }],
     });
-    return strip(response.content.find(b => b.type === 'text')?.text || '');
+    const raw = strip(response.content.find(b => b.type === 'text')?.text || '');
+    if (!raw) return null;
+    const news = raw
+      .split(/^---\s*$/m)
+      .map(s => s.trim())
+      .filter(s => s.length > 20);
+    // Si Claude n'a pas mis de delimiteurs, on retombe sur 1 seule news (le texte entier)
+    if (news.length === 0) return { news: [raw] };
+    return { news };
   } catch (err) {
     logger.error('Erreur generation actu IA', { error: err.message });
     return null;

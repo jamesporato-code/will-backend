@@ -29,7 +29,7 @@ const { query } = require('../db/pool');
 const whatsapp = require('../services/whatsapp');
 const contentTypes = require('../services/contentTypes');
 const userService = require('../services/userService');
-const { cacheResponse } = require('../services/redis');
+const { cacheResponse, getCachedResponse } = require('../services/redis');
 const { getCurrentSession } = require('../services/modules');
 
 function startDailyCron() {
@@ -251,28 +251,68 @@ async function sendActuForUser(userId, opts = {}) {
       }
     }
 
-    // Fenetre ouverte : genere et envoie l'actu en free-form
-    const actu = await contentTypes.generateActuIA(user);
-    if (!actu) return { ok: false, error: 'actu generation failed' };
-
-    await whatsapp.sendText(user.whatsapp_id, '📰 Actu IA du jour\n\n' + actu);
-    await new Promise(r => setTimeout(r, 800));
-    await whatsapp.sendButtons(
-      user.whatsapp_id,
-      'Tu veux creuser ?',
-      [
-        { id: 'menu_actu', title: 'Plus d\'actu' },
-        { id: 'menu_outil', title: 'Outil du jour' },
-        { id: 'menu_hub', title: 'Voir le menu' },
-      ],
-      null,
-      'Will · midi'
-    );
+    // Fenetre ouverte : charge ou genere les 3 news, envoie la premiere
+    const news = await loadOrGenerateActuNews(user);
+    if (!news || news.length === 0) return { ok: false, error: 'actu generation failed' };
+    await deliverActuNews(user, news, 0);
     return { ok: true, type: 'actu' };
   } catch (err) {
     logger.error('sendActuForUser exception', { userId, error: err.message, stack: err.stack });
     return { ok: false, error: err.message };
   }
+}
+
+// Charge le cache d'actu IA pour un user (24h TTL). Si vide, genere 3 news fraiches
+// via Claude + Tavily et les met en cache.
+async function loadOrGenerateActuNews(user) {
+  const cacheKey = 'actu_news:' + user.id;
+  try {
+    const cached = await getCachedResponse(cacheKey);
+    if (cached && Array.isArray(cached.news) && cached.news.length > 0) {
+      return cached.news;
+    }
+  } catch (err) {
+    logger.warn('Cache read fail actu_news', { userId: user.id, error: err.message });
+  }
+  const generated = await contentTypes.generateActuIA(user);
+  if (!generated || !Array.isArray(generated.news) || generated.news.length === 0) {
+    return null;
+  }
+  try {
+    await cacheResponse(cacheKey, { news: generated.news, generated_at: new Date().toISOString() }, 86400);
+  } catch (err) {
+    logger.warn('Cache write fail actu_news', { userId: user.id, error: err.message });
+  }
+  return generated.news;
+}
+
+// Delivre 1 news a l'index demande, avec un header "X/Y" et des boutons :
+// - "Suivante" (actu_next_<N+1>) si une news suivante existe
+// - "Outil du jour" et "Voir le menu" comme alternatives
+async function deliverActuNews(user, newsArray, index) {
+  if (!Array.isArray(newsArray) || index < 0 || index >= newsArray.length) return false;
+  const total = newsArray.length;
+  const header = '📰 Actu IA · ' + (index + 1) + '/' + total;
+  await whatsapp.sendText(user.whatsapp_id, header + '\n\n' + newsArray[index]);
+  await new Promise(r => setTimeout(r, 800));
+
+  const buttons = [];
+  if (index + 1 < total) {
+    buttons.push({ id: 'actu_next_' + (index + 1), title: 'Suivante' });
+  }
+  buttons.push({ id: 'menu_outil', title: 'Outil du jour' });
+  buttons.push({ id: 'menu_hub', title: 'Voir le menu' });
+
+  await whatsapp.sendButtons(
+    user.whatsapp_id,
+    index + 1 < total
+      ? 'Tu veux la suivante ?'
+      : 'Et apres ?',
+    buttons.slice(0, 3),
+    null,
+    'Will · actu IA'
+  );
+  return true;
 }
 
 // Verifie si le user a envoye un message dans les 24 dernieres heures (fenetre Meta).
@@ -363,26 +403,16 @@ async function sendTrialDaily(user, opts = {}) {
 
   // J6 : aperçu (actu IA + teaser prompt)
   if (trialDay === 6) {
-    const actu = await contentTypes.generateActuIA(user);
-    if (!actu) {
+    const newsArray = await loadOrGenerateActuNews(user);
+    if (!newsArray || newsArray.length === 0) {
       return await sendFallback(user, greet, 'actu generation failed');
     }
-    await cacheResponse('daily:' + user.id, actu, 86400);
     const j6Intro = skipGreet
       ? 'Aujourd\'hui un aperçu de ce que tu reçois en Pro : l\'actu IA du jour.'
       : greet + ' Aujourd\'hui un aperçu de ce que tu reçois en Pro : l\'actu IA du jour.';
-    await whatsapp.sendText(user.whatsapp_id, j6Intro + '\n\n' + actu);
-    await new Promise(r => setTimeout(r, 800));
-    await whatsapp.sendButtons(
-      user.whatsapp_id,
-      'On creuse ?',
-      [
-        { id: 'daily_deep', title: 'J\'approfondis' },
-        { id: 'plan_pro', title: 'Voir l\'offre Pro' },
-      ],
-      null,
-      'Aperçu Pro · Actu IA'
-    );
+    await whatsapp.sendText(user.whatsapp_id, j6Intro);
+    await new Promise(r => setTimeout(r, 600));
+    await deliverActuNews(user, newsArray, 0);
     await userService.incrementDailyCount(user.id);
     return { ok: true, type: 'trial_preview' };
   }
@@ -483,12 +513,25 @@ async function sendProDaily(user, opts = {}) {
 
 async function sendProRotation(user, prefix, jsDay) {
   // Lun(1)/Mer(3)/Ven(5) → actu  ;  Mar(2)/Jeu(4)/Sam(6) → outil ou prompt
+  // Pour les jours actu, on utilise le flow split (1 news + bouton Suivante).
+  // Pour outil/prompt on garde le format unique.
+  if (jsDay === 1 || jsDay === 3 || jsDay === 5) {
+    if (prefix) {
+      await whatsapp.sendText(user.whatsapp_id, prefix.trim());
+      await new Promise(r => setTimeout(r, 600));
+    }
+    const newsArray = await loadOrGenerateActuNews(user);
+    if (!newsArray || newsArray.length === 0) {
+      return await sendFallback(user, '', 'actu generation failed');
+    }
+    await deliverActuNews(user, newsArray, 0);
+    await userService.incrementDailyCount(user.id);
+    return { ok: true, type: 'pro_rotation_actu' };
+  }
+
   let content = null;
   let footer = '';
-  if (jsDay === 1 || jsDay === 3 || jsDay === 5) {
-    content = await contentTypes.generateActuIA(user);
-    footer = 'Actu IA du jour';
-  } else if (jsDay === 2 || jsDay === 4) {
+  if (jsDay === 2 || jsDay === 4) {
     content = await contentTypes.generateOutilDuJour(user);
     footer = 'Outil du jour';
   } else if (jsDay === 6) {
@@ -552,8 +595,18 @@ async function handleProMenuChoice(user, buttonId) {
       nextProgress = result.nextProgress;
     }
   } else if (buttonId === 'menu_actu') {
-    content = await contentTypes.generateActuIA(user);
-    footer = 'Actu IA du jour';
+    // Flow split : on charge ou genere les news et on envoie la 1re avec bouton Suivante.
+    // On ne tombe pas dans la branche "content" plus bas.
+    const newsArray = await loadOrGenerateActuNews(user);
+    if (!newsArray || newsArray.length === 0) {
+      await whatsapp.sendText(
+        user.whatsapp_id,
+        'Je rencontre un petit souci pour preparer l\'actu. Reessaie dans quelques secondes.'
+      );
+      return;
+    }
+    await deliverActuNews(user, newsArray, 0);
+    return;
   } else if (buttonId === 'menu_outil') {
     content = await contentTypes.generateOutilDuJour(user);
     footer = 'Outil du jour';
@@ -728,6 +781,8 @@ module.exports = {
   sendDailyForUser,
   sendActuForUser,
   sendActuAtSlot,
+  loadOrGenerateActuNews,
+  deliverActuNews,
   sendTrialReminderFreeForm,
   handleProMenuChoice,
 };
