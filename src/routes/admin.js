@@ -2703,6 +2703,57 @@ router.get('/payment-issues', adminAuth, async (req, res) => {
 });
 
 // ============================================
+// ACTU IA — override manuel d'admin
+// Permet de forcer 3 news pour la journee, identiques pour tous les users.
+// Stockage Redis : actu_forced:<YYYY-MM-DD> = { news: [...], setAt }
+// ============================================
+const { cacheResponse: __cacheResponse, getCachedResponse: __getCachedResponse, deleteCache: __deleteCache } = require('../services/redis');
+
+router.get('/forced-actu', adminAuth, async (req, res) => {
+  try {
+    const today = new Date().toISOString().substring(0, 10);
+    const forced = await __getCachedResponse('actu_forced:' + today);
+    res.json({ date: today, forced: forced || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/forced-actu', adminAuth, async (req, res) => {
+  try {
+    const { news, date } = req.body || {};
+    if (!Array.isArray(news) || news.length === 0) {
+      return res.status(400).json({ error: 'news doit etre un tableau de strings non vide' });
+    }
+    const cleaned = news.map(s => String(s || '').trim()).filter(s => s.length > 0);
+    if (cleaned.length === 0) {
+      return res.status(400).json({ error: 'aucune news valide apres nettoyage' });
+    }
+    const day = date || new Date().toISOString().substring(0, 10);
+    const payload = { news: cleaned, setAt: new Date().toISOString() };
+    await __cacheResponse('actu_forced:' + day, payload, 172800); // TTL 48h
+    // Invalide les caches user pour que tout le monde recoive le nouveau push
+    // (les caches actu_news:<userId> ont 24h, on ne les supprime pas un par un
+    // — la prochaine generation passera par l'override car prioritaire)
+    logger.info('Forced actu set', { day, count: cleaned.length });
+    res.json({ success: true, date: day, news: cleaned });
+  } catch (err) {
+    logger.error('Forced actu set error', { error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/forced-actu', adminAuth, async (req, res) => {
+  try {
+    const day = (req.query.date) || new Date().toISOString().substring(0, 10);
+    await __deleteCache('actu_forced:' + day);
+    res.json({ success: true, cleared: day });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================
 // WHATSAPP TEMPLATES (admin) — soumet/liste les templates Meta via l'API Cloud.
 // Necessite que WHATSAPP_ACCESS_TOKEN ait la permission whatsapp_business_management.
 // ============================================

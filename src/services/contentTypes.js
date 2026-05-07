@@ -10,9 +10,26 @@ const Anthropic = require('@anthropic-ai/sdk');
 const logger = require('../utils/logger');
 const { query } = require('../db/pool');
 const { getCurrentSession, getNextProgress } = require('./modules');
+const { cacheResponse, getCachedResponse } = require('./redis');
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = 'claude-haiku-4-5-20251001';
+
+// Query Tavily par secteur user — permet d'avoir des news plus ciblees
+// quand le secteur est connu, sinon on retombe sur la query generaliste FR.
+const SECTOR_ACTU_QUERIES = {
+  sales:     'actualites IA pour commerciaux ventes B2B en France 2026',
+  marketing: 'actualites IA marketing growth contenu SEO en France 2026',
+  dev:       'actualites IA developpement code outils tech en France 2026',
+  finance:   'actualites IA finance comptabilite controle gestion en France 2026',
+  hr:        'actualites IA RH recrutement people management en France 2026',
+  founder:   'actualites IA startup entrepreneur fondateur en France 2026',
+  corporate: 'actualites IA entreprise management transformation en France 2026',
+  creative:  'actualites IA design creatif image video en France 2026',
+  freelance: 'actualites IA freelance independant outils en France 2026',
+  student:   'actualites IA etudiants apprentissage formation en France 2026',
+};
+const ACTU_QUERY_FR_GENERAL = 'actualites IA intelligence artificielle France 2026';
 
 // ============================================
 // Recherche web Tavily (shared)
@@ -31,11 +48,40 @@ async function webSearch(searchQuery) {
     });
     if (!response.ok) throw new Error('Tavily ' + response.status);
     const data = await response.json();
-    return data.results.map((r, i) => '[' + (i + 1) + '] ' + r.title + '\n' + r.content + '\nSource: ' + r.url).join('\n\n');
+    return data.results.map((r, i) => {
+      let domain = 'web';
+      try { domain = new URL(r.url).hostname.replace(/^www\./, ''); } catch {}
+      return '[' + (i + 1) + '] ' + r.title + ' (' + domain + ')\n' + r.content + '\nLien : ' + r.url;
+    }).join('\n\n');
   } catch (err) {
     logger.error('Tavily search error', { error: err.message });
     return '';
   }
+}
+
+// Tavily search avec cache global journalier par secteur. Gain : 1 appel
+// API/jour/secteur au lieu de 1 par user/push (economie de credits si scale).
+async function getCachedActuSearch(user) {
+  const sector = (user && user.sector && SECTOR_ACTU_QUERIES[user.sector])
+    ? user.sector
+    : 'general';
+  const query = sector === 'general'
+    ? ACTU_QUERY_FR_GENERAL
+    : SECTOR_ACTU_QUERIES[sector];
+  const today = new Date().toISOString().substring(0, 10);
+  const cacheKey = 'actu_search:' + today + ':' + sector;
+  try {
+    const cached = await getCachedResponse(cacheKey);
+    if (cached && typeof cached === 'string' && cached.length > 30) return cached;
+  } catch (err) {
+    logger.warn('Cache read fail actu_search', { error: err.message });
+  }
+  if (!process.env.TAVILY_API_KEY) return '';
+  const fresh = await webSearch(query);
+  if (fresh && fresh.length > 30) {
+    try { await cacheResponse(cacheKey, fresh, 86400); } catch {}
+  }
+  return fresh;
 }
 
 function strip(text) {
@@ -153,35 +199,48 @@ REGLES :
 // TYPE B â Actu IA quotidienne
 // ============================================
 async function generateActuIA(user) {
-  let actuData = '';
-  if (process.env.TAVILY_API_KEY) {
-    actuData = await webSearch('latest AI news today artificial intelligence tools 2026');
+  // Override admin : si une actu forcee est definie pour aujourd'hui, on l'utilise.
+  // Permet de pousser manuellement LA news du jour pour tous les users.
+  try {
+    const today = new Date().toISOString().substring(0, 10);
+    const forced = await getCachedResponse('actu_forced:' + today);
+    if (forced && Array.isArray(forced.news) && forced.news.length > 0) {
+      logger.info('Actu IA : utilisation de l\'override admin', { date: today });
+      return { news: forced.news };
+    }
+  } catch (err) {
+    logger.warn('Erreur lecture override actu', { error: err.message });
   }
 
-  const prompt = `Tu es Will, coach IA sur WhatsApp. Genere 3 news IA distinctes pour aujourd'hui.
+  // Sinon : recherche Tavily (cachee 24h, par secteur user) puis synthese Claude
+  const actuData = await getCachedActuSearch(user);
+
+  const prompt = `Tu es Will, coach IA sur WhatsApp. Genere 3 news IA distinctes pour aujourd'hui, en francais, en t'appuyant exclusivement sur les actualites fournies.
 
 PROFIL :
 ${buildUserContext(user)}
 
 ${buildLevelGuidance(user)}
 
-${actuData ? 'ACTUALITES FRAICHES (source web) :\n' + actuData + '\n' : ''}
+${actuData ? 'ACTUALITES FRAICHES (source web) :\n' + actuData + '\n' : 'Aucune actu fraiche disponible : appuie-toi sur tes connaissances de l\'IA en 2026.'}
 
 FORMAT DE SORTIE OBLIGATOIRE :
-- Genere EXACTEMENT 3 news.
-- Separe-les par une ligne contenant uniquement "---" (sans rien autour).
+- Genere EXACTEMENT 3 news distinctes (pas la meme info reformulee 3 fois).
+- Separe-les par une ligne contenant uniquement "---" (3 tirets, rien autour).
 - Pour chaque news :
-  - Premiere ligne : un titre court (max 8 mots, sans numerotation)
-  - 2 phrases d'analyse adaptees au metier de l'utilisateur
-  - Une derniere ligne : "Ce que ca change pour toi : <action concrete en 1 phrase>"
+  - Premiere ligne : un titre court (max 8 mots, sans numerotation, sans guillemets)
+  - 2 phrases d'analyse adaptees au metier de l'utilisateur (pas un copier-coller de l'article)
+  - "Ce que ca change pour toi : <action concrete en 1 phrase>"
+  - Derniere ligne : "Source : <domaine>" en utilisant le domaine entre parentheses fourni dans les actualites (ex: Source : numerama.com). Si tu n'as pas de source identifiable, ecris "Source : analyse Will".
 
 INTERDICTIONS :
 - Pas de bulletin general, pas de header avant la 1re news
 - Pas de "News 1", "News 2", "News 3" dans le texte
 - Pas de markdown (pas de **, ##, etc)
+- Ne PAS inventer de source. Cite uniquement un domaine present dans les actualites fournies.
 
 CHAQUE NEWS DOIT ETRE :
-- 50-70 mots maximum
+- 50-70 mots maximum (la ligne Source ne compte pas)
 - Concrete et actionnable pour son metier
 - 1 emoji max par news`;
 
