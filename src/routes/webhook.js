@@ -433,6 +433,14 @@ async function handleDailyButton(user, buttonId) {
       return;
     }
 
+    // Track les actions deja cliquees par le user pour SA session du jour.
+    // Cle journaliere → s'auto-rotate avec le nouveau daily. On charge AVANT
+    // de generer pour pouvoir bail si tout est deja fait.
+    const today = new Date().toISOString().substring(0, 10);
+    const clickedKey = 'daily_clicked:' + user.id + ':' + today;
+    let clicked = await getCachedResponse(clickedKey);
+    if (!Array.isArray(clicked)) clicked = [];
+
     const userContext = { level: user.level, job: user.job, displayName: user.display_name };
     const followup = await claude.generateDailyFollowup(buttonType, dailyContent, userContext);
 
@@ -440,6 +448,10 @@ async function handleDailyButton(user, buttonId) {
     await userService.incrementDailyCount(user.id);
     await whatsapp.sendText(user.whatsapp_id, followup);
     await new Promise(r => setTimeout(r, 1000));
+
+    // Enregistre l'action courante (apres avoir genere le contenu)
+    if (!clicked.includes(buttonType)) clicked.push(buttonType);
+    await cacheResponse(clickedKey, clicked, 86400);
 
     if (buttonType === 'minidefi') {
       // v3.5 : ouvrir une fenêtre de free-text scopée pour la réponse au défi
@@ -452,12 +464,19 @@ async function handleDailyButton(user, buttonId) {
       return;
     }
 
+    // Propose UNIQUEMENT les actions pas encore faites aujourd'hui.
     const nextButtons = [];
-    if (buttonType !== 'deep') nextButtons.push({ id: 'daily_deep', title: 'J\'approfondis' });
-    if (buttonType !== 'example') nextButtons.push({ id: 'daily_example', title: 'Exemple concret' });
-    if (buttonType !== 'minidefi') nextButtons.push({ id: 'daily_minidefi', title: 'Mini-défi' });
+    if (!clicked.includes('deep'))     nextButtons.push({ id: 'daily_deep',     title: 'J\'approfondis' });
+    if (!clicked.includes('example'))  nextButtons.push({ id: 'daily_example',  title: 'Exemple concret' });
+    if (!clicked.includes('minidefi')) nextButtons.push({ id: 'daily_minidefi', title: 'Mini-défi' });
     if (nextButtons.length > 0) {
       await whatsapp.sendButtons(user.whatsapp_id, 'Tu veux continuer à explorer ?', nextButtons);
+    } else {
+      // Tout a ete cliqué pour aujourd'hui
+      await whatsapp.sendText(
+        user.whatsapp_id,
+        'Tu as exploré toutes les pistes de ta session du jour 🚀 À demain pour la suite — ou tape /menu pour l\'actu IA, un outil, un prompt.'
+      );
     }
   } catch (err) {
     logger.error('Error handling daily button', err.message);
